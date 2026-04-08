@@ -1,0 +1,33 @@
+# Сборка и кэш — не тащим на чужой компьютер
+.gradle/
+build/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Ключи подписи (не коммитить настоящий keystore)
+*.jks
+*.keystore
+keystore.properties
+
+# IDE
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea/caches/
+.idea/libraries/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Логи и профили
+*.log
+*.hprof
+output.json

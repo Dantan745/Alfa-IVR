@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: alfa-koshelek-cr
+    runtime: docker
+    plan: free
+    region: frankfurt
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: HOST
+        value: "0.0.0.0"
+      - key: DATA_DIR
+        value: "/data"
+      - key: ADMIN_KEY
+        generateValue: true

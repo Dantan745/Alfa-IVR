@@ -1,0 +1,12 @@
+.npm-cache
+node_modules
+web/node_modules
+web/dist
+server/node_modules
+server/data.json
+server/notify.json
+server/.env
+server/cloudflared.exe
+android
+.git
+*.log

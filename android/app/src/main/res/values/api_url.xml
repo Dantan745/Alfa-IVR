@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="api_base" translatable="false">http://192.168.1.72:8787</string>
+</resources>
