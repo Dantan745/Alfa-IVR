@@ -1,0 +1,11 @@
+meta:
+  environment: docker
+  toolchain:
+    name: docker
+run:
+  command: node server/index.mjs
+  containerPort: 8080
+env:
+  - PORT=8080
+  - HOST=0.0.0.0
+  - DATA_DIR=/data

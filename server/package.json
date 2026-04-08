@@ -1,0 +1,11 @@
+{
+  "name": "alfa-cr-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "nodemailer": "^10.3.1"
+  }
+}
