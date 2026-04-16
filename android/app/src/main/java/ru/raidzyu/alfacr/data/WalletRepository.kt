@@ -35,6 +35,8 @@ class WalletRepository(
     private val forecaster: PaymentForecaster = LinearForecaster(),
     private val remote: RemoteBankApi = OfflineRemoteApi(),
 ) {
+    private var lastLoginAttempts: Int = 1
+    private val seenAccountDevices = mutableSetOf<String>()
     suspend fun ensureDemo() = DemoSeed.populate(db)
 
     fun user(id: Long) = db.users().observe(id)
@@ -68,8 +70,11 @@ class WalletRepository(
         val cred = db.credentials().byUser(user.id)
             ?: return Result.failure(IllegalArgumentException("Нет учётных данных"))
         if (!PasswordHasher.verify(password, cred.saltHex, cred.passwordHash)) {
+            store?.let { it.loginAttempts = it.loginAttempts + 1 }
             return Result.failure(IllegalArgumentException("Неверный пароль"))
         }
+        lastLoginAttempts = store?.loginAttempts ?: 1
+        store?.loginAttempts = 1
         return Result.success(user)
     }
 
@@ -175,14 +180,22 @@ class WalletRepository(
         }
 
         val hour = cal.get(Calendar.HOUR_OF_DAY)
+        val avg = db.transactions().avgAbsOut(userId).toLong().coerceAtLeast(1)
+        val lastAt = db.transactions().lastCreatedAt(userId)
+        val device = store?.deviceId.orEmpty()
+        val pair = "$userId:$device"
+        val isNewDevice = device.isNotBlank() && seenAccountDevices.add(pair)
         val anomaly = detector.score(
             TxFeatures(
                 amountKopecks = kopecks,
                 hourOfDay = hour,
                 isNewPayee = isNewPayee,
                 dailySpendKopecks = dayTransfers,
-                avgAbsAmountKopecks = 2_000_00,
+                avgAbsAmountKopecks = if (avg > 0) avg else 2_000_00,
                 category = "Переводы",
+                loginAttempts = lastLoginAttempts,
+                timeSinceLastTxSec = if (lastAt > 0) (System.currentTimeMillis() - lastAt) / 1000 else 0,
+                isNewDevice = isNewDevice,
             ),
         )
         if (anomaly.shouldBlock && !force) {

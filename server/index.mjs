@@ -5,7 +5,8 @@ import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { deliver, loadNotify, persistNotify, publicNotify, saveNotify } from "./notify.mjs";
-import { buildReport, extractFeatures } from "./ml/index.mjs";
+import { buildReport, extractFeatures, scoreWithFriendModel } from "./ml/index.mjs";
+import { buildFraudSample } from "./ml/features.mjs";
 import { formatRuPhone, isRuMobile, ruMobileDigits, samePhone } from "./phone.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -123,6 +124,9 @@ function loadDb() {
   }
   for (const u of Object.values(db.users || {})) {
     if (u.phone && isRuMobile(u.phone)) u.phone = formatRuPhone(u.phone);
+    if (!u.loginAttempts) u.loginAttempts = 1;
+    if (!u.lastLoginAttempts) u.lastLoginAttempts = 1;
+    if (!Array.isArray(u.devices)) u.devices = [];
   }
   saveDb(db);
   return db;
@@ -197,8 +201,10 @@ function locked(fn) {
 
 function publicUser(u, extra = {}) {
   if (!u) return null;
-  const { passwordHash, passwordPlain, ...rest } = u;
-  if (extra.admin) return { ...rest, password: passwordPlain || "" };
+  const { passwordHash, passwordPlain, devices, ...rest } = u;
+  if (extra.admin) {
+    return { ...rest, password: passwordPlain || "", devices: devices || [], deviceCount: (devices || []).length };
+  }
   return rest;
 }
 
@@ -232,19 +238,75 @@ function snapshot(email) {
   return { user: publicUser(user), wallet: { ...wallet, limits: L, usage }, txs, notes, contacts };
 }
 
-function issueSession(email) {
+function requestDeviceId(req) {
+  const h = String(req.headers["x-device-id"] || "").trim().slice(0, 64);
+  if (h) return h;
+  const ua = String(req.headers["user-agent"] || "ua");
+  const ip = String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "");
+  return sha256(ua + "|" + ip.split(",")[0]).slice(0, 32);
+}
+
+function issueSession(email, extra = {}) {
   const token = crypto.randomBytes(24).toString("hex");
-  store.sessions[token] = { email, exp: Date.now() + 14 * 86400000 };
+  store.sessions[token] = {
+    email,
+    exp: Date.now() + 14 * 86400000,
+    deviceId: extra.deviceId || "",
+    newDevice: extra.newDevice ? 1 : 0,
+    loginAttempts: Math.max(1, Number(extra.loginAttempts) || 1),
+  };
   saveDb(store);
   return token;
 }
 
-function authEmail(req) {
+function sessionOf(req) {
   const h = req.headers.authorization || "";
   const token = h.startsWith("Bearer ") ? h.slice(7) : "";
   const s = store.sessions[token];
   if (!s || s.exp < Date.now()) return null;
-  return s.email;
+  return s;
+}
+
+function authEmail(req) {
+  return sessionOf(req)?.email || null;
+}
+
+function rememberLoginFail(user) {
+  if (!user) return;
+  user.loginAttempts = Math.max(1, Number(user.loginAttempts) || 1) + 1;
+}
+
+function rememberLoginOk(user, deviceId) {
+  const attempts = Math.max(1, Number(user.loginAttempts) || 1);
+  user.lastLoginAttempts = attempts;
+  user.loginAttempts = 1;
+  user.devices = Array.isArray(user.devices) ? user.devices : [];
+  const known = Boolean(deviceId && user.devices.includes(deviceId));
+  const newDevice = deviceId && !known ? 1 : 0;
+  if (deviceId && !known) user.devices.push(deviceId);
+  if (user.devices.length > 24) user.devices = user.devices.slice(-24);
+  return { attempts, newDevice };
+}
+
+function scoreOutgoing(email, amount, payee, sess) {
+  const sample = buildFraudSample(store, {
+    email,
+    amount,
+    payee,
+    loginAttempts: sess?.loginAttempts || store.users[email]?.lastLoginAttempts || 1,
+    newDevice: sess?.newDevice || 0,
+  });
+  const scored = scoreWithFriendModel([sample])[0];
+  const fallback = {
+    score: 0,
+    final_score: sample.is_night * 0.2 + sample.is_new_payee * 0.25 + sample.is_new_device * 0.2,
+    anomaly: 0,
+    engine: "heuristic",
+  };
+  const out = scored || fallback;
+  const final = Number(out.final_score || out.score || 0);
+  if (!scored) out.anomaly = final >= 0.75 ? 1 : 0;
+  return { sample, ...out, final_score: final };
 }
 
 function digits(s) {
@@ -536,6 +598,8 @@ const server = http.createServer(async (req, res) => {
         const user = findUserByLogin(b.login || b.email);
         if (!user) return send(res, 400, { error: "Пользователь с такой почтой или телефоном не найден" });
         if (purpose === "login" && !passwordOk(user, b.password)) {
+          rememberLoginFail(user);
+          saveDb(store);
           return send(res, 400, { error: "Неверный пароль" });
         }
         if (user.frozen) return send(res, 403, { error: "Счёт заблокирован. Обратитесь в поддержку." });
@@ -565,6 +629,7 @@ const server = http.createServer(async (req, res) => {
         if (!takeCode("register", email, b.code)) {
           return send(res, 400, { error: "Подтвердите регистрацию кодом из СМС или письма" });
         }
+        const deviceId = requestDeviceId(req);
         store.users[email] = {
           email,
           passwordHash: sha256(password),
@@ -577,6 +642,9 @@ const server = http.createServer(async (req, res) => {
           walletId: "WLT-" + crypto.randomBytes(4).toString("hex").toUpperCase() + "-ЦР",
           createdAt: Date.now(),
           otpChannel: b.channel === "email" ? "email" : "sms",
+          loginAttempts: 1,
+          lastLoginAttempts: 1,
+          devices: deviceId ? [deviceId] : [],
         };
         store.wallets[email] = {
           email,
@@ -588,7 +656,7 @@ const server = http.createServer(async (req, res) => {
           limits: defaultLimits(),
         };
         addNote(email, "Кошелёк создан", "Баланс 0 ₽. Пополните кошелёк, чтобы отправлять переводы.", "system");
-        const token = issueSession(email);
+        const token = issueSession(email, { deviceId, newDevice: 1, loginAttempts: 1 });
         send(res, 200, { token, ...snapshot(email) });
         return;
       }
@@ -597,15 +665,22 @@ const server = http.createServer(async (req, res) => {
         const b = await readBody(req);
         const user = findUserByLogin(b.email || b.login);
         if (!user) return send(res, 400, { error: "Пользователь не найден" });
-        if (!passwordOk(user, b.password)) return send(res, 400, { error: "Неверный пароль" });
+        if (!passwordOk(user, b.password)) {
+          rememberLoginFail(user);
+          saveDb(store);
+          return send(res, 400, { error: "Неверный пароль" });
+        }
         if (user.frozen) return send(res, 403, { error: "Счёт заблокирован. Обратитесь в поддержку." });
         if (user.email !== DEMO_EMAIL) {
           if (!takeCode("login", user.email, b.code)) {
+            rememberLoginFail(user);
+            saveDb(store);
             return send(res, 400, { error: "Неверный или просроченный код из СМС или письма" });
           }
         }
-        saveDb(store);
-        const token = issueSession(user.email);
+        const deviceId = requestDeviceId(req);
+        const ok = rememberLoginOk(user, deviceId);
+        const token = issueSession(user.email, { deviceId, newDevice: ok.newDevice, loginAttempts: ok.attempts });
         send(res, 200, { token, ...snapshot(user.email) });
         return;
       }
@@ -637,8 +712,9 @@ const server = http.createServer(async (req, res) => {
           return send(res, 400, { error: "Неверный или просроченный код из письма" });
         }
         setUserPassword(user, password);
-        saveDb(store);
-        const token = issueSession(user.email);
+        const deviceId = requestDeviceId(req);
+        const ok = rememberLoginOk(user, deviceId);
+        const token = issueSession(user.email, { deviceId, newDevice: ok.newDevice, loginAttempts: ok.attempts });
         send(res, 200, { token, ...snapshot(user.email) });
         return;
       }
@@ -854,7 +930,8 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const email = authEmail(req);
+      const sess = sessionOf(req);
+      const email = sess?.email || null;
       if (p.startsWith("/api/") && !email) {
         send(res, 401, { error: "Нужна авторизация" });
         return;
@@ -876,6 +953,10 @@ const server = http.createServer(async (req, res) => {
         try { assertNotFrozen(email); assertNotSelf(email, payee); assertLimits(email, amount); } catch (e) { return send(res, 400, { error: e.message }); }
         if (amount > wallet.balance) return send(res, 400, { error: "Недостаточно средств" });
         try { assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
+        const fraud = scoreOutgoing(email, amount, payee, sess);
+        if (fraud.anomaly && fraud.final_score >= 0.9 && !b.force) {
+          return send(res, 400, { error: "Модель антифрода заблокировала перевод. Проверьте получателя или подтвердите повторно.", ml: fraud });
+        }
         addTx(email, {
           name: isRuMobile(payee) ? formatRuPhone(payee) : payee,
           amount: -amount,
@@ -884,8 +965,14 @@ const server = http.createServer(async (req, res) => {
           category: "Переводы",
           comment,
           counterparty: payee,
+          mlFeatures: fraud.sample,
+          mlScore: fraud.final_score,
+          mlAnomaly: fraud.anomaly ? 1 : 0,
         });
         addNote(email, "Списание", `${payee}: ${amount.toLocaleString("ru-RU")} ₽`, "transfer");
+        if (fraud.anomaly || fraud.final_score >= 0.6) {
+          addNote(email, "Аномалия ML", `Риск ${Math.round(fraud.final_score * 100)}/100 · сумма ${amount} ₽ · получатель ${payee}`, "anomaly");
+        }
         const other = findPayee(payee, email);
         if (other) {
           addTx(other.email, {
@@ -932,6 +1019,7 @@ const server = http.createServer(async (req, res) => {
         try { assertNotFrozen(email); assertLimits(email, amount); } catch (e) { return send(res, 400, { error: e.message }); }
         if (amount > wallet.balance) return send(res, 400, { error: "Недостаточно средств" });
         try { assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
+        const fraud = scoreOutgoing(email, amount, "QR-касса", sess);
         addTx(email, {
           name: "Оплата QR",
           amount: -amount,
@@ -940,6 +1028,9 @@ const server = http.createServer(async (req, res) => {
           category: "Прочее",
           comment: "QR",
           counterparty: "QR-касса",
+          mlFeatures: fraud.sample,
+          mlScore: fraud.final_score,
+          mlAnomaly: fraud.anomaly ? 1 : 0,
         });
         addNote(email, "Списание", `QR: ${amount.toLocaleString("ru-RU")} ₽`, "transfer");
         saveDb(store);
@@ -962,6 +1053,7 @@ const server = http.createServer(async (req, res) => {
             fail += 1;
             continue;
           }
+          const fraud = scoreOutgoing(email, amount, phone || name, sess);
           addTx(email, {
             name: `Массовый: ${name}`,
             amount: -amount,
@@ -970,6 +1062,9 @@ const server = http.createServer(async (req, res) => {
             category: "Переводы",
             comment: "Массовый платёж",
             counterparty: phone || name,
+            mlFeatures: fraud.sample,
+            mlScore: fraud.final_score,
+            mlAnomaly: fraud.anomaly ? 1 : 0,
           });
           const other = findPayee(phone || name, email);
           if (other) {

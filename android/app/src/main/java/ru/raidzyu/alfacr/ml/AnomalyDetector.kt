@@ -21,7 +21,14 @@ data class TxFeatures(
     val dailySpendKopecks: Long,
     val avgAbsAmountKopecks: Long,
     val category: String,
-)
+    val loginAttempts: Int = 1,
+    val timeSinceLastTxSec: Long = 0,
+    val isNewDevice: Boolean = false,
+) {
+    val isNight: Boolean get() = hourOfDay >= 23 || hourOfDay < 6
+    val amountToAvgRatio: Float
+        get() = if (avgAbsAmountKopecks <= 0) 1f else amountKopecks.toFloat() / avgAbsAmountKopecks.toFloat()
+}
 
 data class AnomalyResult(
     val score: Float,
@@ -41,14 +48,12 @@ fun interface PaymentForecaster {
 class HeuristicAnomalyDetector : AnomalyDetector {
     override suspend fun score(features: TxFeatures): AnomalyResult {
         var score = 0f
-        if (features.isNewPayee) score += 0.35f
-        if (features.hourOfDay < 6 || features.hourOfDay >= 23) score += 0.2f
-        if (features.avgAbsAmountKopecks > 0 &&
-            features.amountKopecks > features.avgAbsAmountKopecks * 4
-        ) {
-            score += 0.35f
-        }
-        if (features.amountKopecks > 15_000_00) score += 0.15f
+        if (features.isNewPayee) score += 0.25f
+        if (features.isNight) score += 0.2f
+        if (features.amountToAvgRatio >= 4f) score += 0.25f
+        if (features.loginAttempts >= 4) score += 0.1f
+        if (features.isNewDevice) score += 0.15f
+        if (features.amountKopecks > 15_000_00) score += 0.1f
         score = score.coerceIn(0f, 1f)
         val block = score >= 0.85f
         val label = when {

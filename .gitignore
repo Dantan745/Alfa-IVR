@@ -16,3 +16,5 @@ _h3.txt
 server/_h.txt
 server/_login.json
 server/public-url.txt
+**/__pycache__/
+*.pyc

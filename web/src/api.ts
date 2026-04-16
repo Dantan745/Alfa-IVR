@@ -12,6 +12,16 @@ export type Snapshot = {
 };
 
 const TOKEN_KEY = "alfa-cr-token";
+const DEVICE_KEY = "alfa-device-id";
+
+export function getDeviceId() {
+  let id = localStorage.getItem(DEVICE_KEY) || "";
+  if (!id) {
+    id = (globalThis.crypto?.randomUUID?.() || ("dev-" + Math.random().toString(36).slice(2) + Date.now())).slice(0, 36);
+    localStorage.setItem(DEVICE_KEY, id);
+  }
+  return id;
+}
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY) || "";
@@ -27,6 +37,7 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   const token = getToken();
   if (token) headers.set("Authorization", "Bearer " + token);
+  headers.set("X-Device-Id", getDeviceId());
   let res: Response;
   try {
     res = await fetch(path, { ...init, headers });

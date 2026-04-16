@@ -39,6 +39,20 @@ class SecureStore(context: Context) {
         get() = prefs.getString(KEY_TOKEN, "") ?: ""
         set(value) = prefs.edit().putString(KEY_TOKEN, value).apply()
 
+    var deviceId: String
+        get() {
+            val existing = prefs.getString(KEY_DEVICE, "") ?: ""
+            if (existing.isNotBlank()) return existing
+            val fresh = java.util.UUID.randomUUID().toString()
+            prefs.edit().putString(KEY_DEVICE, fresh).apply()
+            return fresh
+        }
+        set(value) = prefs.edit().putString(KEY_DEVICE, value).apply()
+
+    var loginAttempts: Int
+        get() = prefs.getInt(KEY_ATTEMPTS, 1).coerceAtLeast(1)
+        set(value) = prefs.edit().putInt(KEY_ATTEMPTS, value.coerceAtLeast(1)).apply()
+
     fun hasFreshSession(): Boolean = userId > 0 && System.currentTimeMillis() < sessionUntil
 
     fun startSession(id: Long, durationMs: Long = 15 * 60 * 1000L) {
@@ -55,5 +69,7 @@ class SecureStore(context: Context) {
         const val KEY_UNTIL = "session_until"
         const val KEY_BIO = "bio"
         const val KEY_TOKEN = "api_token"
+        const val KEY_DEVICE = "device_id"
+        const val KEY_ATTEMPTS = "login_attempts"
     }
 }
