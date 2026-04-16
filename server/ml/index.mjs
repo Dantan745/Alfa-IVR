@@ -18,7 +18,50 @@
  *   riskUsers   — клиенты с повышенным риском
  */
 
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { extractFraudRows, FRAUD_FEATURES } from "./features.mjs";
+
 const DAY = 86400000;
+const ML_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+let cachedPy;
+function pythonBin() {
+  if (cachedPy !== undefined) return cachedPy;
+  cachedPy = null;
+  for (const cmd of [process.env.PYTHON, "python", "py", "python3"].filter(Boolean)) {
+    const probe = spawnSync(cmd, ["-c", "import joblib, numpy, sklearn"], { encoding: "utf8", timeout: 15000 });
+    if (probe.status === 0) {
+      cachedPy = cmd;
+      break;
+    }
+  }
+  return cachedPy;
+}
+
+export function scoreWithFriendModel(samples) {
+  const list = Array.isArray(samples) ? samples : [samples];
+  if (!list.length) return [];
+  const bin = pythonBin();
+  if (!bin) return list.map(() => null);
+  const run = spawnSync(bin, [path.join(ML_DIR, "score.py")], {
+    input: JSON.stringify(list),
+    encoding: "utf8",
+    timeout: 20000,
+    windowsHide: true,
+  });
+  if (run.status !== 0) {
+    console.warn("[ml] python score failed:", (run.stderr || run.stdout || "").slice(0, 400));
+    return list.map(() => null);
+  }
+  try {
+    const parsed = JSON.parse(run.stdout);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return list.map(() => null);
+  }
+}
 
 function dayKey(ts) {
   const d = new Date(ts);
@@ -118,17 +161,53 @@ export function extractFeatures(store) {
       createdAt: t.createdAt,
     }));
 
+  const fraud = extractFraudRows(store);
+
   return {
     generatedAt: now,
     daily: [...dailyMap.values()],
     users,
     txs,
+    fraud,
+    fraudFeatures: FRAUD_FEATURES,
   };
 }
 
-export function runCustomModel(_features) {
-  // TODO(colleague): верните { forecast?, anomalies?, riskUsers?, notes? }
-  return null;
+export function runCustomModel(features) {
+  const rows = (features.fraud || []).slice(0, 40);
+  const scored = scoreWithFriendModel(rows);
+  const anomalies = [];
+  for (let i = 0; i < rows.length; i++) {
+    const s = scored[i];
+    if (!s) continue;
+    const final = Number(s.final_score || s.score || 0);
+    if (!s.anomaly && final < 0.6) continue;
+    const flags = [];
+    if (rows[i].is_night) flags.push("ночь 23:00–06:00");
+    if (rows[i].is_new_payee) flags.push("новый получатель");
+    if (rows[i].new_device || rows[i].is_new_device) flags.push("новое устройство");
+    if (rows[i].amount_to_avg_ratio >= 3) flags.push("сумма выше среднего чека");
+    if (rows[i].login_attempts >= 4) flags.push("много попыток входа");
+    anomalies.push({
+      id: rows[i].id,
+      email: rows[i].email,
+      amount: -rows[i].amount,
+      createdAt: rows[i].createdAt,
+      counterparty: rows[i].counterparty,
+      z: Number(final.toFixed(3)),
+      flags: flags.length ? flags : ["модель антифрода"],
+      score: Math.min(100, Math.round(final * 100)),
+      engine: s.engine || "anti_fraud.joblib",
+    });
+  }
+  anomalies.sort((a, b) => b.score - a.score);
+  if (!anomalies.length && !scored.some(Boolean)) return null;
+  return {
+    engine: scored.some(Boolean) ? "anti_fraud.joblib" : null,
+    notes: "Модель коллеги: IsolationForest (anti_fraud.joblib) + is_night.",
+    anomalies: anomalies.slice(0, 40),
+    fraudFeatures: FRAUD_FEATURES,
+  };
 }
 
 function baselineAnomalies(features) {
@@ -226,6 +305,8 @@ export function buildReport(store, { horizonDays = 7 } = {}) {
       daily: features.daily,
       userCount: features.users.length,
       txWindow: features.txs.length,
+      fraud: features.fraud,
+      fraudFeatures: FRAUD_FEATURES,
     },
     baseline,
     custom,

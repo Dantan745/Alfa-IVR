@@ -93,6 +93,12 @@ interface TransactionDao {
 
     @Query("DELETE FROM transactions WHERE userId = :userId")
     suspend fun deleteForUser(userId: Long)
+
+    @Query("SELECT COALESCE(AVG(ABS(amountKopecks)), 0) FROM transactions WHERE userId = :userId AND amountKopecks < 0")
+    suspend fun avgAbsOut(userId: Long): Double
+
+    @Query("SELECT COALESCE(MAX(createdAt), 0) FROM transactions WHERE userId = :userId")
+    suspend fun lastCreatedAt(userId: Long): Long
 }
 
 @Dao
