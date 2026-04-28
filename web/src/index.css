@@ -135,6 +135,30 @@ input::placeholder, textarea::placeholder {
   display: none;
 }
 
+.admin-shell {
+  height: 100%;
+  max-height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  background: #0B0E14;
+  color: #E0E0E0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 210, 211, 0.45) rgba(255, 255, 255, 0.06);
+}
+.admin-shell::-webkit-scrollbar {
+  display: block;
+  width: 10px;
+}
+.admin-shell::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+.admin-shell::-webkit-scrollbar-thumb {
+  background: rgba(0, 210, 211, 0.4);
+  border-radius: 8px;
+}
+
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
