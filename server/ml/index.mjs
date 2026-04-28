@@ -48,7 +48,7 @@ export function scoreWithFriendModel(samples) {
   const run = spawnSync(bin, [path.join(ML_DIR, "score.py")], {
     input: JSON.stringify(list),
     encoding: "utf8",
-    timeout: 20000,
+    timeout: 45000,
     windowsHide: true,
   });
   if (run.status !== 0) {
@@ -56,9 +56,12 @@ export function scoreWithFriendModel(samples) {
     return list.map(() => null);
   }
   try {
-    const parsed = JSON.parse(run.stdout);
+    const text = String(run.stdout || "");
+    const start = text.search(/[\[{]/);
+    const parsed = JSON.parse(start >= 0 ? text.slice(start) : text);
     return Array.isArray(parsed) ? parsed : [parsed];
-  } catch {
+  } catch (e) {
+    console.warn("[ml] python score json:", e.message);
     return list.map(() => null);
   }
 }
@@ -173,39 +176,81 @@ export function extractFeatures(store) {
   };
 }
 
+function flagsFor(row) {
+  const flags = [];
+  if (row.is_night) flags.push("ночь 23:00–06:00");
+  if (row.is_new_payee) flags.push("новый получатель");
+  if (row.new_device || row.is_new_device) flags.push("новое устройство");
+  if (row.amount_to_avg_ratio >= 3) flags.push("сумма выше среднего чека");
+  if (row.login_attempts >= 4) flags.push("много попыток входа");
+  if (row.amount >= 100000) flags.push("очень крупная сумма");
+  if (row.amount >= 1e12) flags.push("нереалистичная сумма");
+  if (row.type === "income" && row.amount >= 100000) flags.push("крупное пополнение");
+  return flags;
+}
+
+function isStrange(row, modelAnomaly, final) {
+  if (modelAnomaly || final >= 0.55) return true;
+  if (row.savedAnomaly) return true;
+  if (row.amount >= 50000) return true;
+  if (row.amount_to_avg_ratio >= 3 && row.amount >= 1000) return true;
+  if (row.is_new_payee && row.amount >= 500) return true;
+  if (row.is_night && row.amount >= 3000) return true;
+  if (row.type === "income" && row.amount >= 100000) return true;
+  return false;
+}
+
+export function mergeAnomalies(...lists) {
+  const map = new Map();
+  for (const list of lists) {
+    for (const a of list || []) {
+      if (!a?.id) continue;
+      const prev = map.get(a.id);
+      if (!prev) {
+        map.set(a.id, a);
+        continue;
+      }
+      map.set(a.id, {
+        ...prev,
+        ...a,
+        score: Math.max(Number(prev.score) || 0, Number(a.score) || 0),
+        flags: [...new Set([...(prev.flags || []), ...(a.flags || [])])],
+        createdAt: Math.max(prev.createdAt || 0, a.createdAt || 0),
+      });
+    }
+  }
+  return [...map.values()].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0) || b.score - a.score);
+}
+
 export function runCustomModel(features) {
-  const rows = (features.fraud || []).slice(0, 40);
+  const rows = (features.fraud || []).slice(0, 80);
   const scored = scoreWithFriendModel(rows);
   const anomalies = [];
   for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
     const s = scored[i];
-    if (!s) continue;
-    const final = Number(s.final_score || s.score || 0);
-    if (!s.anomaly && final < 0.6) continue;
-    const flags = [];
-    if (rows[i].is_night) flags.push("ночь 23:00–06:00");
-    if (rows[i].is_new_payee) flags.push("новый получатель");
-    if (rows[i].new_device || rows[i].is_new_device) flags.push("новое устройство");
-    if (rows[i].amount_to_avg_ratio >= 3) flags.push("сумма выше среднего чека");
-    if (rows[i].login_attempts >= 4) flags.push("много попыток входа");
+    const final = Number(s?.final_score || s?.score || row.savedScore || 0);
+    const modelAnomaly = Boolean(s?.anomaly || row.savedAnomaly);
+    if (!isStrange(row, modelAnomaly, final)) continue;
+    const flags = flagsFor(row);
+    const signed = row.signedAmount != null ? row.signedAmount : -row.amount;
     anomalies.push({
-      id: rows[i].id,
-      email: rows[i].email,
-      amount: -rows[i].amount,
-      createdAt: rows[i].createdAt,
-      counterparty: rows[i].counterparty,
+      id: row.id,
+      email: row.email,
+      amount: signed,
+      createdAt: row.createdAt,
+      counterparty: row.counterparty,
       z: Number(final.toFixed(3)),
       flags: flags.length ? flags : ["модель антифрода"],
-      score: Math.min(100, Math.round(final * 100)),
-      engine: s.engine || "anti_fraud.joblib",
+      score: Math.min(100, Math.max(1, Math.round((final || (flags.length ? 0.7 : 0)) * 100))),
+      engine: s?.engine || (row.savedAnomaly ? "saved" : "rules"),
     });
   }
-  anomalies.sort((a, b) => b.score - a.score);
   if (!anomalies.length && !scored.some(Boolean)) return null;
   return {
-    engine: scored.some(Boolean) ? "anti_fraud.joblib" : null,
-    notes: "Модель коллеги: IsolationForest (anti_fraud.joblib) + is_night.",
-    anomalies: anomalies.slice(0, 40),
+    engine: scored.some(Boolean) ? "anti_fraud.joblib" : "rules",
+    notes: "Модель коллеги + правила по 8 фичам. Новые операции сверху.",
+    anomalies: mergeAnomalies(anomalies).slice(0, 60),
     fraudFeatures: FRAUD_FEATURES,
   };
 }
@@ -225,6 +270,8 @@ function baselineAnomalies(features) {
     const flags = [];
     if (Math.abs(z) >= 2.5 && t.abs >= 10000) flags.push("сумма сильно выше обычного");
     if (t.abs > 10000 && t.type === "expense") flags.push("крупное списание");
+    if (t.abs >= 100000 && t.type === "income") flags.push("крупное пополнение");
+    if (t.abs >= 1e12) flags.push("нереалистичная сумма");
     if (flags.length) {
       out.push({
         id: t.id,
@@ -311,7 +358,7 @@ export function buildReport(store, { horizonDays = 7 } = {}) {
     baseline,
     custom,
     forecast: custom?.forecast || baseline.forecast,
-    anomalies: custom?.anomalies || baseline.anomalies,
+    anomalies: mergeAnomalies(custom?.anomalies, baseline.anomalies).slice(0, 60),
     riskUsers: custom?.riskUsers || baseline.riskUsers,
   };
 }

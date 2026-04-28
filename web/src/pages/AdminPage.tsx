@@ -203,11 +203,21 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!ok || tab !== "ml") return;
-    setMlMsg("Считаем baseline…");
-    void adminReq<MlReport>("/api/admin/ml").then((d) => {
-      setMl(d);
-      setMlMsg(d.custom ? "Подключена custom-модель коллеги" : "Работает встроенный baseline. Custom-модель ещё не подключена.");
-    }).catch((e) => setMlMsg(e instanceof Error ? e.message : "Ошибка ML"));
+    let stop = false;
+    async function loadMl(first = false) {
+      if (first) setMlMsg("Считаем антифрод…");
+      try {
+        const d = await adminReq<MlReport>("/api/admin/ml");
+        if (stop) return;
+        setMl(d);
+        setMlMsg((d.custom?.engine ? `Модель: ${d.custom.engine}. ` : "") + `Аномалий: ${d.anomalies?.length || 0}. Обновлено ${new Date().toLocaleTimeString("ru-RU")}.`);
+      } catch (e) {
+        if (!stop) setMlMsg(e instanceof Error ? e.message : "Ошибка ML");
+      }
+    }
+    void loadMl(true);
+    const id = setInterval(() => void loadMl(false), 8000);
+    return () => { stop = true; clearInterval(id); };
   }, [ok, tab]);
 
   const filtered = useMemo(() => {
@@ -513,11 +523,13 @@ export default function AdminPage() {
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
-                    <p className="text-[14px] font-medium mb-2">Аномалии</p>
+                    <p className="text-[14px] font-medium mb-2">Аномалии · новые сверху</p>
                     {ml.anomalies.length === 0 && <p className="text-[13px] text-[rgba(185,202,203,0.45)]">Пока нет выбросов</p>}
-                    {ml.anomalies.slice(0, 15).map((a) => (
+                    {ml.anomalies.slice(0, 40).map((a) => (
                       <p key={a.id} className="text-[12px] py-1.5 border-b border-white/5">
-                        {a.score}/100 · {a.email} · {a.amount} ₽ · {a.flags.join(", ")}
+                        <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
+                        {" · "}
+                        {a.score}/100 · {a.email} · {a.amount} ₽ · {(a.flags || []).join(", ")}
                       </p>
                     ))}
                   </div>
