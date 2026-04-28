@@ -89,7 +89,7 @@ export default function App() {
       case "smart": return <SmartContractPage onBack={goBack} />;
       case "topup": return <TopUpPage onBack={goBack} />;
       case "tx": return <TxDetailPage txId={txId || ""} onBack={goBack} onRepeat={() => navigate("transfer")} />;
-      case "notifications": return <NotificationsPage onBack={goBack} />;
+      case "notifications": return <NotificationsPage onBack={goBack} onNavigate={navigate} />;
       case "security": return <SecurityPage onBack={goBack} />;
       case "support": return <SupportPage onBack={goBack} />;
       default: return null;
@@ -118,10 +118,10 @@ export default function App() {
         <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-[120px] z-0 hidden sm:block" style={{ background: "linear-gradient(to bottom, rgba(0,242,255,0.05), transparent)" }} />
           {sub ? (
-            <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto">{renderSubPage()}</div>
+            <div key={sub || "sub"} className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto page-swap">{renderSubPage()}</div>
           ) : (
             <>
-              <div className="relative z-10 min-h-0 flex-1 overflow-y-auto">{renderTab()}</div>
+              <div key={tab} className="relative z-10 min-h-0 flex-1 overflow-y-auto page-swap">{renderTab()}</div>
               <BottomNav
                 variant="bottom"
                 current={tab}

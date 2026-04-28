@@ -1,6 +1,6 @@
 import { formatTxDate, useWallet } from "../wallet";
 
-export default function NotificationsPage({ onBack }: { onBack: () => void }) {
+export default function NotificationsPage({ onBack, onNavigate }: { onBack: () => void; onNavigate?: (page: string, extra?: string) => void }) {
   const { notes, markNotesRead, markNoteRead } = useWallet();
   const unread = notes.filter((n) => !n.read).length;
 
@@ -19,11 +19,14 @@ export default function NotificationsPage({ onBack }: { onBack: () => void }) {
         {notes.length === 0 ? (
           <p className="text-center text-[rgba(185,202,203,0.5)] mt-10">Пока нет уведомлений</p>
         ) : (
-          notes.map((n) => (
+          notes.filter((n) => n.kind !== "anomaly" && !/мошенн|антифрод|аномал|подозрит/i.test(`${n.title} ${n.body}`)).map((n) => (
             <button
               type="button"
               key={n.id}
-              onClick={() => void markNoteRead(n.id)}
+              onClick={() => {
+                void markNoteRead(n.id);
+                if (n.txId && onNavigate) onNavigate("tx", n.txId);
+              }}
               className="w-full text-left rounded-[20px] px-4 py-3.5 mb-3 pressable"
               style={{
                 background: n.read ? "#191C1C" : "rgba(0,210,211,0.1)",

@@ -5,8 +5,8 @@ import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { deliver, loadNotify, persistNotify, publicNotify, saveNotify } from "./notify.mjs";
-import { buildReport, extractFeatures, scoreWithFriendModel } from "./ml/index.mjs";
-import { buildFraudSample } from "./ml/features.mjs";
+import { buildReport, extractFeatures } from "./ml/index.mjs";
+import { assessRisk, buildFraudSample } from "./ml/features.mjs";
 import { formatRuPhone, isRuMobile, ruMobileDigits, samePhone } from "./phone.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -97,8 +97,7 @@ function seedDemo(db) {
     running -= row.amount;
   }
   db.notes.push(
-    { id: "n1", email: DEMO_EMAIL, title: "Обнаружена аномалия", body: "Необычная транзакция с незнакомого устройства. Если это были не вы — заблокируйте вход.", kind: "anomaly", createdAt: nowOffset(0, 2, 14), read: false },
-    { id: "n2", email: DEMO_EMAIL, title: "Перевод получен", body: "Петров А.С. отправил вам 5 000 ₽", kind: "transfer", createdAt: nowOffset(1, 18, 22), read: false },
+    { id: "n2", email: DEMO_EMAIL, title: "Перевод получен", body: "Петров А.С. отправил вам 5 000 ₽", kind: "transfer", createdAt: nowOffset(1, 18, 22), read: false, txId: "t2" },
     { id: "n3", email: DEMO_EMAIL, title: "Вход в кошелёк", body: "Успешная авторизация с этого устройства", kind: "security", createdAt: nowOffset(0, 8, 0), read: true },
   );
 }
@@ -117,6 +116,12 @@ function loadDb() {
     db.users[DEMO_EMAIL].passwordHash = sha256(DEMO_PASS);
   }
   db.contacts = (db.contacts || []).filter((c) => !["c1", "c2", "c3", "c4"].includes(c.id));
+  db.notes = (db.notes || []).filter((n) => {
+    if (n.id === "n1") return false;
+    const body = String(n.body || "");
+    if (n.kind === "anomaly" && /незнакомого устройства/i.test(body) && !n.txId) return false;
+    return true;
+  });
   if (!db.codes) db.codes = {};
   if (!db.audit) db.audit = [];
   for (const w of Object.values(db.wallets || {})) {
@@ -201,9 +206,18 @@ function locked(fn) {
 
 function publicUser(u, extra = {}) {
   if (!u) return null;
-  const { passwordHash, passwordPlain, devices, ...rest } = u;
+  const { passwordHash, passwordPlain, devices, freezeReason, frozenBy, frozenTxId, frozenAt, ...rest } = u;
   if (extra.admin) {
-    return { ...rest, password: passwordPlain || "", devices: devices || [], deviceCount: (devices || []).length };
+    return {
+      ...rest,
+      freezeReason,
+      frozenBy,
+      frozenTxId,
+      frozenAt,
+      password: passwordPlain || "",
+      devices: devices || [],
+      deviceCount: (devices || []).length,
+    };
   }
   return rest;
 }
@@ -225,11 +239,49 @@ function passwordOk(user, password) {
   return false;
 }
 
+function decorateTx(t) {
+  const v = riskOf(t, { sample: t.mlFeatures, anomaly: t.mlAnomaly, final_score: t.mlScore });
+  return {
+    ...t,
+    mlScore: v.score / 100,
+    mlAnomaly: v.level === "fraud" ? 1 : 0,
+    riskLevel: v.level,
+    riskLabel: v.label,
+    riskExplain: v.explain,
+    riskScore: v.score,
+  };
+}
+
+function publicTx(t) {
+  const row = { ...t };
+  delete row.mlFeatures;
+  delete row.mlScore;
+  delete row.mlAnomaly;
+  delete row.riskLevel;
+  delete row.riskLabel;
+  delete row.riskExplain;
+  delete row.riskScore;
+  delete row.freezeReason;
+  delete row.heldBy;
+  delete row.heldAt;
+  delete row.holdQuery;
+  delete row.reviewedBy;
+  if (row.status === "held") row.status = "pending";
+  return row;
+}
+
+function publicNotes(email) {
+  return store.notes
+    .filter((n) => n.email === email && n.kind !== "anomaly")
+    .filter((n) => !/мошенн|антифрод|аномал|подозрит/i.test(`${n.title} ${n.body}`))
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
 function snapshot(email) {
   const user = store.users[email];
   const wallet = store.wallets[email];
-  const txs = store.txs.filter((t) => t.email === email).sort((a, b) => b.createdAt - a.createdAt);
-  const notes = store.notes.filter((n) => n.email === email).sort((a, b) => b.createdAt - a.createdAt);
+  const txs = store.txs.filter((t) => t.email === email).sort((a, b) => b.createdAt - a.createdAt).map(publicTx);
+  const notes = publicNotes(email);
   const contacts = store.contacts
     .filter((c) => c.email === email)
     .sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name, "ru"));
@@ -288,25 +340,23 @@ function rememberLoginOk(user, deviceId) {
   return { attempts, newDevice };
 }
 
-function scoreOutgoing(email, amount, payee, sess) {
+function scoreOutgoing(email, amount, payee, sess, type = "expense") {
   const sample = buildFraudSample(store, {
     email,
     amount,
     payee,
     loginAttempts: sess?.loginAttempts || store.users[email]?.lastLoginAttempts || 1,
     newDevice: sess?.newDevice || 0,
+    type,
   });
-  const scored = scoreWithFriendModel([sample])[0];
-  const fallback = {
-    score: 0,
-    final_score: sample.is_night * 0.2 + sample.is_new_payee * 0.25 + sample.is_new_device * 0.2,
-    anomaly: 0,
-    engine: "heuristic",
+  const v = assessRisk(sample, false, 0);
+  return {
+    sample,
+    final_score: v.score / 100,
+    anomaly: v.level === "fraud" ? 1 : 0,
+    engine: "rules",
+    verdict: v,
   };
-  const out = scored || fallback;
-  const final = Number(out.final_score || out.score || 0);
-  if (!scored) out.anomaly = final >= 0.75 ? 1 : 0;
-  return { sample, ...out, final_score: final };
 }
 
 function digits(s) {
@@ -363,9 +413,145 @@ function assertNotSelf(fromEmail, query) {
 }
 
 function assertNotFrozen(email) {
-  if (store.users[email]?.frozen) {
-    throw new Error("Счёт заблокирован администратором");
+  const user = store.users[email];
+  if (user?.frozen) {
+    throw new Error("Счёт временно ограничен. Операции недоступны, обратитесь в поддержку.");
   }
+}
+
+function freezeAccount(email, reason, extra = {}) {
+  const user = store.users[email];
+  if (!user) return false;
+  const why = String(reason || "Подозрение на мошенничество").trim();
+  const already = Boolean(user.frozen);
+  user.frozen = true;
+  user.freezeReason = why;
+  user.frozenAt = Date.now();
+  user.frozenBy = extra.by || "antifraud";
+  if (extra.txId) user.frozenTxId = extra.txId;
+  if (!already) addNote(email, "Счёт временно ограничен", "Операции недоступны. При необходимости напишите в поддержку.", "system", extra.txId ? { txId: extra.txId } : {});
+  audit("user.freeze", { email, reason: why, by: user.frozenBy, txId: extra.txId || "" });
+  return !already;
+}
+
+function unfreezeAccount(email) {
+  const user = store.users[email];
+  if (!user) return false;
+  user.frozen = false;
+  user.freezeReason = "";
+  user.frozenBy = "";
+  user.frozenTxId = "";
+  addNote(email, "Счёт снова доступен", "Ограничения сняты.", "system");
+  audit("user.unfreeze", { email });
+  return true;
+}
+
+function riskOf(tx, fraud) {
+  if (tx?.riskScore != null && tx.riskLabel && Array.isArray(tx.riskExplain) && tx.riskExplain.length) {
+    return {
+      score: tx.riskScore,
+      level: tx.riskLevel || (tx.riskScore >= 75 ? "fraud" : tx.riskScore >= 35 ? "watch" : "ok"),
+      label: tx.riskLabel,
+      flags: [],
+      explain: tx.riskExplain,
+      model: 0,
+    };
+  }
+  const sample = fraud?.sample || tx.mlFeatures || {};
+  return assessRisk(
+    { ...sample, type: tx.type, amount: Math.abs(tx.amount), signedAmount: tx.amount },
+    false,
+    0,
+  );
+}
+
+function shouldHoldFraud(tx, fraud) {
+  return riskOf(tx, fraud).level === "fraud";
+}
+
+function holdTx(tx, reason, extra = {}) {
+  if (!tx || tx.status === "held" || tx.status === "rejected") return;
+  tx.status = "held";
+  tx.freezeReason = reason;
+  tx.heldAt = Date.now();
+  tx.heldBy = extra.by || "antifraud";
+  addNote(tx.email, "Операция в обработке", `${tx.name}: ${Math.abs(tx.amount).toLocaleString("ru-RU")} ₽`, "transfer", { txId: tx.id });
+  audit("tx.hold", { email: tx.email, txId: tx.id, reason, by: tx.heldBy });
+}
+
+function creditPayeeFromHeld(tx) {
+  const query = tx.holdQuery || tx.counterparty || tx.name;
+  const other = findPayee(query, tx.email);
+  if (!other) return null;
+  const abs = Math.abs(tx.amount);
+  const inTx = addTx(other.email, {
+    name: `${store.users[tx.email].lastName} ${store.users[tx.email].firstName}`.trim() || "Перевод",
+    amount: abs,
+    type: "income",
+    icon: "person",
+    category: "Переводы",
+    comment: tx.comment || "После проверки антифрода",
+    counterparty: store.users[tx.email].phone || tx.email,
+    linkedTxId: tx.id,
+  });
+  addNote(other.email, "Перевод получен", `${store.users[tx.email].firstName} отправил ${abs.toLocaleString("ru-RU")} ₽`, "transfer", { txId: inTx.id });
+  tx.linkedTxId = inTx.id;
+  return inTx;
+}
+
+function releaseHeldTx(tx, by = "admin") {
+  if (!tx || tx.status !== "held") throw new Error("Операция не заморожена");
+  if (tx.amount < 0 && !tx.linkedTxId) creditPayeeFromHeld(tx);
+  tx.status = "done";
+  tx.freezeReason = "";
+  tx.reviewedAt = Date.now();
+  tx.reviewedBy = by;
+  addNote(tx.email, "Операция выполнена", `${tx.name}: ${Math.abs(tx.amount).toLocaleString("ru-RU")} ₽`, "transfer", { txId: tx.id });
+  audit("tx.release", { email: tx.email, txId: tx.id, by });
+}
+
+function rejectHeldTx(tx, by = "admin") {
+  if (!tx || tx.status !== "held") throw new Error("Операция не заморожена");
+  const abs = Math.abs(tx.amount);
+  if (tx.status === "held") {
+    if (tx.amount < 0) {
+      addTx(tx.email, {
+        name: "Возврат заморозки",
+        amount: abs,
+        type: "income",
+        icon: "undo",
+        category: "Служебное",
+        comment: `Возврат ${tx.id}`,
+        counterparty: "Антифрод",
+        linkedTxId: tx.id,
+      });
+    } else {
+      addTx(tx.email, {
+        name: "Отмена заморозки",
+        amount: -abs,
+        type: "expense",
+        icon: "block",
+        category: "Служебное",
+        comment: `Отмена ${tx.id}`,
+        counterparty: "Антифрод",
+        linkedTxId: tx.id,
+      });
+    }
+  }
+  tx.status = "rejected";
+  tx.freezeReason = "Отклонено администратором как мошенничество";
+  tx.reviewedAt = Date.now();
+  tx.reviewedBy = by;
+  addNote(tx.email, "Операция отменена", `${tx.name}: ${abs.toLocaleString("ru-RU")} ₽ возвращены`, "transfer", { txId: tx.id });
+  audit("tx.reject", { email: tx.email, txId: tx.id, by });
+}
+
+function applyHoldIfNeeded(tx, fraud, extra = {}) {
+  if (!shouldHoldFraud(tx, fraud) && !extra.force) return false;
+  const reason = extra.reason || "Антифрод: подозрение на мошенничество";
+  holdTx(tx, reason, extra);
+  freezeAccount(tx.email, reason, { txId: tx.id, by: extra.by || "antifraud" });
+  return true;
 }
 
 function audit(action, detail) {
@@ -430,7 +616,7 @@ function assertPayCode(email, amount, code) {
   return true;
 }
 
-function addNote(email, title, body, kind = "transfer") {
+function addNote(email, title, body, kind = "transfer", extra = {}) {
   store.notes.push({
     id: uid("n-"),
     email,
@@ -439,7 +625,21 @@ function addNote(email, title, body, kind = "transfer") {
     kind,
     createdAt: Date.now(),
     read: false,
+    ...extra,
   });
+}
+
+function applyFraud(tx, fraud) {
+  const sample = fraud?.sample || {};
+  const v = fraud?.verdict || riskOf(tx, fraud);
+  tx.mlFeatures = sample;
+  tx.mlScore = v.score / 100;
+  tx.mlAnomaly = v.level === "fraud" ? 1 : 0;
+  tx.riskLevel = v.level;
+  tx.riskLabel = v.label;
+  tx.riskExplain = v.explain || [];
+  tx.riskScore = v.score;
+  return v;
 }
 
 function addTx(email, partial) {
@@ -561,6 +761,7 @@ const server = http.createServer(async (req, res) => {
 
         if (purpose === "pay") {
           if (!authed) return send(res, 401, { error: "Нужна авторизация" });
+          try { assertNotFrozen(authed); } catch (e) { return send(res, 403, { error: e.message }); }
           const amount = Number(b.amount);
           if (!needPayOtp(authed, amount)) {
             return send(res, 200, { ok: true, via: "skip", masked: "" });
@@ -602,7 +803,6 @@ const server = http.createServer(async (req, res) => {
           saveDb(store);
           return send(res, 400, { error: "Неверный пароль" });
         }
-        if (user.frozen) return send(res, 403, { error: "Счёт заблокирован. Обратитесь в поддержку." });
         if (user.email === DEMO_EMAIL) return send(res, 200, { ok: true, via: "demo", masked: "демо" });
         const ch = channel || user.otpChannel || "sms";
         try {
@@ -670,7 +870,6 @@ const server = http.createServer(async (req, res) => {
           saveDb(store);
           return send(res, 400, { error: "Неверный пароль" });
         }
-        if (user.frozen) return send(res, 403, { error: "Счёт заблокирован. Обратитесь в поддержку." });
         if (user.email !== DEMO_EMAIL) {
           if (!takeCode("login", user.email, b.code)) {
             rememberLoginFail(user);
@@ -775,10 +974,34 @@ const server = http.createServer(async (req, res) => {
           let rows = (store.txs || []).slice().sort((a, b) => b.createdAt - a.createdAt);
           if (type === "in") rows = rows.filter((t) => t.amount > 0);
           if (type === "out") rows = rows.filter((t) => t.amount < 0);
+          if (type === "held") rows = rows.filter((t) => t.status === "held");
+          if (type === "rejected") rows = rows.filter((t) => t.status === "rejected");
           if (q) {
             rows = rows.filter((t) => `${t.email} ${t.name} ${t.counterparty} ${t.category}`.toLowerCase().includes(q));
           }
-          send(res, 200, { txs: rows.slice(0, 300), total: rows.length });
+          send(res, 200, { txs: rows.slice(0, 300).map(decorateTx), total: rows.length });
+          return;
+        }
+        const txAct = p.match(/^\/api\/admin\/txs\/([^/]+)\/(hold|release|reject)$/);
+        if (txAct && req.method === "POST") {
+          const txId = decodeURIComponent(txAct[1]);
+          const op = txAct[2];
+          const tx = (store.txs || []).find((t) => t.id === txId);
+          if (!tx) return send(res, 404, { error: "Нет операции" });
+          const b = await readBody(req).catch(() => ({}));
+          try {
+            if (op === "hold") {
+              const reason = String(b.reason || "Заморозка администратором: подозрение на мошенничество");
+              if (tx.status !== "held") holdTx(tx, reason, { by: "admin" });
+              freezeAccount(tx.email, reason, { txId: tx.id, by: "admin" });
+            }
+            if (op === "release") releaseHeldTx(tx, "admin");
+            if (op === "reject") rejectHeldTx(tx, "admin");
+          } catch (e) {
+            return send(res, 400, { error: e.message });
+          }
+          saveDb(store);
+          send(res, 200, { ok: true, tx });
           return;
         }
         if (req.method === "GET" && p === "/api/admin/ml") {
@@ -815,16 +1038,10 @@ const server = http.createServer(async (req, res) => {
           if (!user) return send(res, 404, { error: "Нет пользователя" });
           const b = await readBody(req).catch(() => ({}));
           if (op === "freeze") {
-            user.frozen = true;
-            user.freezeReason = String(b.reason || "Блокировка администратором");
-            addNote(email, "Счёт заблокирован", user.freezeReason, "security");
-            audit("user.freeze", { email, reason: user.freezeReason });
+            freezeAccount(email, String(b.reason || "Блокировка администратором"), { by: "admin" });
           }
           if (op === "unfreeze") {
-            user.frozen = false;
-            user.freezeReason = "";
-            addNote(email, "Счёт разблокирован", "Ограничения сняты", "security");
-            audit("user.unfreeze", { email });
+            unfreezeAccount(email);
           }
           if (op === "kick") {
             for (const [k, s] of Object.entries(store.sessions)) if (s.email === email) delete store.sessions[k];
@@ -863,7 +1080,7 @@ const server = http.createServer(async (req, res) => {
             send(res, 200, {
               user: { ...publicUser(user, { admin: true }), lastCode: lastCodeFor(email), balance: store.wallets[email]?.balance || 0, txCount: 0 },
               wallet: store.wallets[email],
-              txs: store.txs.filter((t) => t.email === email).sort((a, b) => b.createdAt - a.createdAt),
+              txs: store.txs.filter((t) => t.email === email).sort((a, b) => b.createdAt - a.createdAt).map(decorateTx),
               contacts: store.contacts.filter((c) => c.email === email),
               notes: store.notes.filter((n) => n.email === email),
             });
@@ -953,11 +1170,8 @@ const server = http.createServer(async (req, res) => {
         try { assertNotFrozen(email); assertNotSelf(email, payee); assertLimits(email, amount); } catch (e) { return send(res, 400, { error: e.message }); }
         if (amount > wallet.balance) return send(res, 400, { error: "Недостаточно средств" });
         try { assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
-        const fraud = scoreOutgoing(email, amount, payee, sess);
-        if (fraud.anomaly && fraud.final_score >= 0.9 && !b.force) {
-          return send(res, 400, { error: "Модель антифрода заблокировала перевод. Проверьте получателя или подтвердите повторно.", ml: fraud });
-        }
-        addTx(email, {
+        const fraud = scoreOutgoing(email, amount, payee, sess, "expense");
+        const outTx = addTx(email, {
           name: isRuMobile(payee) ? formatRuPhone(payee) : payee,
           amount: -amount,
           type: "expense",
@@ -965,17 +1179,14 @@ const server = http.createServer(async (req, res) => {
           category: "Переводы",
           comment,
           counterparty: payee,
-          mlFeatures: fraud.sample,
-          mlScore: fraud.final_score,
-          mlAnomaly: fraud.anomaly ? 1 : 0,
+          holdQuery: payee,
         });
-        addNote(email, "Списание", `${payee}: ${amount.toLocaleString("ru-RU")} ₽`, "transfer");
-        if (fraud.anomaly || fraud.final_score >= 0.6) {
-          addNote(email, "Аномалия ML", `Риск ${Math.round(fraud.final_score * 100)}/100 · сумма ${amount} ₽ · получатель ${payee}`, "anomaly");
-        }
+        addNote(email, "Списание", `${payee}: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: outTx.id });
+        applyFraud(outTx, fraud);
+        const held = applyHoldIfNeeded(outTx, fraud);
         const other = findPayee(payee, email);
-        if (other) {
-          addTx(other.email, {
+        if (other && !held) {
+          const inTx = addTx(other.email, {
             name: `${store.users[email].lastName} ${store.users[email].firstName}`.trim(),
             amount,
             type: "income",
@@ -983,8 +1194,10 @@ const server = http.createServer(async (req, res) => {
             category: "Переводы",
             comment,
             counterparty: store.users[email].phone || email,
+            linkedTxId: outTx.id,
           });
-          addNote(other.email, "Перевод получен", `${store.users[email].firstName} отправил ${amount.toLocaleString("ru-RU")} ₽`, "transfer");
+          outTx.linkedTxId = inTx.id;
+          addNote(other.email, "Перевод получен", `${store.users[email].firstName} отправил ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: inTx.id });
         }
         saveDb(store);
         send(res, 200, snapshot(email));
@@ -996,8 +1209,8 @@ const server = http.createServer(async (req, res) => {
         const amount = Number(b.amount);
         try { assertNotFrozen(email); } catch (e) { return send(res, 400, { error: e.message }); }
         if (!(amount > 0)) return send(res, 400, { error: "Укажите сумму" });
-        const fraud = scoreOutgoing(email, amount, "Альфа-Банк", sess);
-        addTx(email, {
+        const fraud = scoreOutgoing(email, amount, "Альфа-Банк", sess, "income");
+        const inTx = addTx(email, {
           name: "Пополнение",
           amount,
           type: "income",
@@ -1005,14 +1218,10 @@ const server = http.createServer(async (req, res) => {
           category: "Доходы",
           comment: "С карты",
           counterparty: "Альфа-Банк",
-          mlFeatures: fraud.sample,
-          mlScore: fraud.final_score,
-          mlAnomaly: (fraud.anomaly || amount >= 100000) ? 1 : 0,
         });
-        addNote(email, "Поступление", `Пополнение: ${amount.toLocaleString("ru-RU")} ₽`, "transfer");
-        if (fraud.anomaly || amount >= 100000) {
-          addNote(email, "Аномалия ML", `Подозрительное пополнение ${amount.toLocaleString("ru-RU")} ₽ · риск ${Math.round((fraud.final_score || 0) * 100)}/100`, "anomaly");
-        }
+        addNote(email, "Поступление", `Пополнение: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: inTx.id });
+        applyFraud(inTx, fraud);
+        applyHoldIfNeeded(inTx, fraud);
         saveDb(store);
         send(res, 200, snapshot(email));
         return;
@@ -1026,8 +1235,8 @@ const server = http.createServer(async (req, res) => {
         try { assertNotFrozen(email); assertLimits(email, amount); } catch (e) { return send(res, 400, { error: e.message }); }
         if (amount > wallet.balance) return send(res, 400, { error: "Недостаточно средств" });
         try { assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
-        const fraud = scoreOutgoing(email, amount, "QR-касса", sess);
-        addTx(email, {
+        const fraud = scoreOutgoing(email, amount, "QR-касса", sess, "expense");
+        const qrTx = addTx(email, {
           name: "Оплата QR",
           amount: -amount,
           type: "expense",
@@ -1035,11 +1244,10 @@ const server = http.createServer(async (req, res) => {
           category: "Прочее",
           comment: "QR",
           counterparty: "QR-касса",
-          mlFeatures: fraud.sample,
-          mlScore: fraud.final_score,
-          mlAnomaly: fraud.anomaly ? 1 : 0,
         });
-        addNote(email, "Списание", `QR: ${amount.toLocaleString("ru-RU")} ₽`, "transfer");
+        addNote(email, "Списание", `QR: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: qrTx.id });
+        applyFraud(qrTx, fraud);
+        applyHoldIfNeeded(qrTx, fraud);
         saveDb(store);
         send(res, 200, snapshot(email));
         return;
@@ -1060,8 +1268,8 @@ const server = http.createServer(async (req, res) => {
             fail += 1;
             continue;
           }
-          const fraud = scoreOutgoing(email, amount, phone || name, sess);
-          addTx(email, {
+          const fraud = scoreOutgoing(email, amount, phone || name, sess, "expense");
+          const bulkTx = addTx(email, {
             name: `Массовый: ${name}`,
             amount: -amount,
             type: "expense",
@@ -1069,13 +1277,12 @@ const server = http.createServer(async (req, res) => {
             category: "Переводы",
             comment: "Массовый платёж",
             counterparty: phone || name,
-            mlFeatures: fraud.sample,
-            mlScore: fraud.final_score,
-            mlAnomaly: fraud.anomaly ? 1 : 0,
           });
+          applyFraud(bulkTx, fraud);
+          const held = applyHoldIfNeeded(bulkTx, fraud);
           const other = findPayee(phone || name, email);
-          if (other) {
-            addTx(other.email, {
+          if (other && !held) {
+            const inTx = addTx(other.email, {
               name: `Массовый от ${store.users[email].firstName}`,
               amount,
               type: "income",
@@ -1083,7 +1290,9 @@ const server = http.createServer(async (req, res) => {
               category: "Переводы",
               comment: "Массовый платёж",
               counterparty: store.users[email].phone || email,
+              linkedTxId: bulkTx.id,
             });
+            bulkTx.linkedTxId = inTx.id;
           }
           ok += 1;
         }
