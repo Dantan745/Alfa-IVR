@@ -59,7 +59,7 @@ export default function BottomNav({ current, onNavigate, variant = "bottom" }: B
               key={tab.id}
               type="button"
               onClick={() => onNavigate(tab.id)}
-              className="flex flex-col items-center gap-1 min-w-[56px] py-1"
+              className="flex flex-col items-center gap-1 min-w-[56px] py-1 pressable"
             >
               <span
                 className="material-symbols-outlined text-[26px] transition-colors"

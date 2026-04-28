@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, getToken, setToken, type Snapshot } from "./api";
 import type { DbContact, DbNote, DbTx, DbUser, DbWallet } from "./db";
 
@@ -43,6 +43,25 @@ export function formatHomeDate(d = new Date()) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+export function riskPercent(score?: number) {
+  const n = Number(score) || 0;
+  const pct = n > 1.5 ? n : n * 100;
+  return Math.max(0, Math.min(100, Math.round(pct)));
+}
+
+export function txStatusLabel(status?: string) {
+  if (status === "held") return "Заморожена";
+  if (status === "rejected") return "Отклонена";
+  if (status === "pending") return "В обработке";
+  return "Исполнена";
+}
+
+export function latestUnreadAnomaly(notes: Note[]) {
+  return [...notes]
+    .filter((n) => n.kind === "anomaly" && !n.read)
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
+}
+
 export function greetingByHour(d = new Date()) {
   const h = d.getHours();
   if (h >= 5 && h < 12) return "Доброе утро";
@@ -82,6 +101,7 @@ type WalletCtx = {
   updateLimits: (patch: Record<string, number>) => Promise<string | null>;
   addSupportNote: (text: string) => Promise<void>;
   setToast: (t: string) => void;
+  flashIds: string[];
 };
 
 const Ctx = createContext<WalletCtx | null>(null);
@@ -96,14 +116,30 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [pendingPayee, setPendingPayee] = useState("");
+  const [flashIds, setFlashIds] = useState<string[]>([]);
+  const knownTx = useRef<Set<string>>(new Set());
+  const seenOnce = useRef(false);
 
-  const apply = useCallback((snap: Snapshot) => {
+  const apply = useCallback((snap: Snapshot, opts: { quiet?: boolean } = {}) => {
+    const nextIds = (snap.txs || []).map((t) => t.id);
+    const fresh = nextIds.filter((id) => !knownTx.current.has(id));
+    knownTx.current = new Set(nextIds);
     setUser(snap.user);
     setWallet(snap.wallet);
     setTxs(snap.txs);
     setNotes(snap.notes);
     setContacts(snap.contacts);
     setAuthed(true);
+    if (fresh.length) {
+      setFlashIds(fresh);
+      window.setTimeout(() => setFlashIds((prev) => prev.filter((id) => !fresh.includes(id))), 1400);
+    }
+    if (seenOnce.current && !opts.quiet && fresh.length) {
+      const income = (snap.txs || []).find((t) => fresh.includes(t.id) && t.amount > 0);
+      if (income) setToast("Поступили средства · баланс обновлён");
+      else setToast("Операции обновлены");
+    }
+    seenOnce.current = true;
   }, []);
 
   const fail = useCallback((e: unknown) => (e instanceof Error ? e.message : "Ошибка сервера"), []);
@@ -112,7 +148,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         await api.health();
-        if (getToken()) apply(await api.me());
+        if (getToken()) apply(await api.me(), { quiet: true });
       } catch {
         setToken(null);
       } finally {
@@ -126,6 +162,31 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const id = setTimeout(() => setToast(""), 2200);
     return () => clearTimeout(id);
   }, [toast]);
+
+  useEffect(() => {
+    if (!authed) return;
+    let stop = false;
+    async function pull() {
+      try {
+        if (stop || !getToken()) return;
+        apply(await api.me());
+      } catch {
+        /* ignore */
+      }
+    }
+    const id = setInterval(() => void pull(), 4000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void pull();
+    };
+    window.addEventListener("focus", onVis);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stop = true;
+      clearInterval(id);
+      window.removeEventListener("focus", onVis);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [authed, apply]);
 
   const requestCode = useCallback(async (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number }) => {
     try {
@@ -147,7 +208,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const resetPassword = useCallback(async (loginId: string, code: string, password: string) => {
     try {
-      apply(await api.reset(loginId, code, password));
+      apply(await api.reset(loginId, code, password), { quiet: true });
       return null;
     } catch (e) {
       return fail(e);
@@ -156,7 +217,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string, code?: string) => {
     try {
-      apply(await api.login(email, password, code));
+      apply(await api.login(email, password, code), { quiet: true });
       return null;
     } catch (e) {
       return fail(e);
@@ -175,7 +236,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         password: input.password,
         code: input.code,
         channel: input.channel || "",
-      }));
+      }), { quiet: true });
       return null;
     } catch (e) {
       return fail(e);
@@ -191,11 +252,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setNotes([]);
     setContacts([]);
     setPendingPayee("");
+    setFlashIds([]);
+    knownTx.current = new Set();
+    seenOnce.current = false;
   }, []);
 
   const transfer = useCallback(async (payee: string, amount: number, comment?: string, code?: string) => {
     try {
-      apply(await api.transfer(payee, amount, comment, code));
+      apply(await api.transfer(payee, amount, comment, code), { quiet: true });
+      setToast("Перевод отправлен");
       return null;
     } catch (e) {
       return fail(e);
@@ -204,7 +269,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const topUp = useCallback(async (amount: number) => {
     try {
-      apply(await api.topUp(amount));
+      apply(await api.topUp(amount), { quiet: true });
+      setToast("Баланс пополнен");
       return null;
     } catch (e) {
       return fail(e);
@@ -213,7 +279,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const qrPay = useCallback(async (amount: number, code?: string) => {
     try {
-      apply(await api.qrPay(amount, code));
+      apply(await api.qrPay(amount, code), { quiet: true });
+      setToast("Оплата прошла");
       return null;
     } catch (e) {
       return fail(e);
@@ -236,16 +303,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const markNotesRead = useCallback(async () => {
-    try { apply(await api.markNotesRead()); } catch { /* ignore */ }
+    try { apply(await api.markNotesRead(), { quiet: true }); } catch { /* ignore */ }
   }, [apply]);
 
   const markNoteRead = useCallback(async (id: string) => {
-    try { apply(await api.markNoteRead(id)); } catch { /* ignore */ }
+    try { apply(await api.markNoteRead(id), { quiet: true }); } catch { /* ignore */ }
   }, [apply]);
 
   const addContact = useCallback(async (name: string, phone: string) => {
     try {
-      apply(await api.addContact(name, phone));
+      apply(await api.addContact(name, phone), { quiet: true });
       setToast("Контакт сохранён");
       return null;
     } catch (e) {
@@ -256,12 +323,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const toggleFav = useCallback(async (id: string) => {
     const cur = contacts.find((c) => c.id === id);
     if (!cur) return;
-    try { apply(await api.toggleFav(id, !cur.favorite)); } catch { /* ignore */ }
+    try { apply(await api.toggleFav(id, !cur.favorite), { quiet: true }); } catch { /* ignore */ }
   }, [apply, contacts]);
 
   const removeContact = useCallback(async (id: string) => {
     try {
-      apply(await api.removeContact(id));
+      apply(await api.removeContact(id), { quiet: true });
       setToast("Контакт удалён");
     } catch { /* ignore */ }
   }, [apply]);
@@ -269,7 +336,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const bulkPay = useCallback(async (rows: { name: string; phone: string; amount: number }[], code?: string) => {
     try {
       const snap = await api.bulkPay(rows, code);
-      apply(snap);
+      apply(snap, { quiet: true });
+      setToast(`Массовый платёж: ${snap.ok || 0} успешно`);
       return { ok: snap.ok || 0, fail: snap.fail || 0 };
     } catch (e) {
       return { ok: 0, fail: rows.length, error: fail(e) };
@@ -278,7 +346,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const updateLimits = useCallback(async (patch: Record<string, number>) => {
     try {
-      apply(await api.updateLimits(patch));
+      apply(await api.updateLimits(patch), { quiet: true });
       setToast("Лимиты сохранены");
       return null;
     } catch (e) {
@@ -290,7 +358,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const updateSecurity = useCallback(async (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "email" }) => {
     try {
-      apply(await api.updateSecurity(patch));
+      apply(await api.updateSecurity(patch), { quiet: true });
       setToast("Настройки сохранены");
     } catch (e) {
       setToast(fail(e));
@@ -299,7 +367,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const addSupportNote = useCallback(async (text: string) => {
     try {
-      apply(await api.addSupportNote(text));
+      apply(await api.addSupportNote(text), { quiet: true });
       setToast("Обращение отправлено");
     } catch (e) {
       setToast(fail(e));
@@ -308,12 +376,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, setPendingPayee,
+      ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, setPendingPayee, flashIds,
       login, requestCode, forgotPassword, resetPassword, register, logout, transfer, topUp, qrPay,
       copyWalletId, markNotesRead, markNoteRead, addContact, toggleFav, removeContact, bulkPay,
       updateSecurity, updateLimits, addSupportNote, setToast,
     }),
-    [ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, login, requestCode, forgotPassword, resetPassword, register, logout, transfer, topUp, qrPay, copyWalletId, markNotesRead, markNoteRead, addContact, toggleFav, removeContact, bulkPay, updateSecurity, updateLimits, addSupportNote],
+    [ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, flashIds, login, requestCode, forgotPassword, resetPassword, register, logout, transfer, topUp, qrPay, copyWalletId, markNotesRead, markNoteRead, addContact, toggleFav, removeContact, bulkPay, updateSecurity, updateLimits, addSupportNote],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

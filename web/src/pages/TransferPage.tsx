@@ -80,6 +80,10 @@ export default function TransferPage({ onBack, onNavigate }: TransferPageProps) 
   }, [pendingPayee, setPendingPayee]);
 
   async function handleSend(code?: string) {
+    if (user?.frozen) {
+      setError("Счёт временно ограничен. Переводы недоступны.");
+      return;
+    }
     const n = Number(String(amount).replace(",", "."));
     if (!(n > 0)) {
       setError("Укажите сумму");
@@ -115,13 +119,15 @@ export default function TransferPage({ onBack, onNavigate }: TransferPageProps) 
             <span className="material-symbols-outlined text-[#00D2D3] text-[40px]">check_circle</span>
           </div>
           <p className="text-[#E0E0E0] text-[24px] font-medium text-center" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
-            Перевод выполнен
+            {user?.frozen ? "Перевод принят" : "Перевод выполнен"}
           </p>
           <p className="text-[#00D2D3] text-[32px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
             {amount} ₽
           </p>
           <p className="text-[rgba(185,202,203,0.7)] text-[14px] text-center" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
-            Средства переведены на номер {phone}
+            {user?.frozen
+              ? "Операция принята и находится в обработке."
+              : `Средства переведены на номер ${phone}`}
           </p>
           <div className="w-full mt-4">
             <PrimaryBtn label="Готово" onClick={onBack} />

@@ -22,7 +22,7 @@ type UserRow = {
 type Detail = {
   user: UserRow;
   wallet: { balance: number; pin: string; hideBalance: boolean; biometric: boolean };
-  txs: { id: string; name: string; amount: number; createdAt: number; type: string; counterparty?: string }[];
+  txs: { id: string; name: string; amount: number; createdAt: number; type: string; counterparty?: string; status?: string; freezeReason?: string; riskScore?: number; riskLabel?: string; riskExplain?: string[] }[];
   contacts: { name: string; phone: string }[];
   notes: { title: string; body: string; createdAt: number }[];
 };
@@ -42,8 +42,10 @@ type Overview = {
 type MlReport = {
   model: string;
   horizonDays: number;
-  forecast: { date: string; volumeOut: number; usersNew: number }[];
-  anomalies: { id: string; email: string; amount: number; createdAt: number; counterparty: string; z: number; flags: string[]; score: number }[];
+  today?: { date: string; volumeOut: number; volumeIn?: number; txCount: number };
+  history?: { date: string; volumeOut: number; volumeIn?: number; volume?: number; txCount?: number; actual?: boolean }[];
+  forecast: { date: string; volumeOut: number; volumeIn?: number; volume?: number; usersNew: number; actual?: boolean }[];
+  anomalies: { id: string; email: string; amount: number; createdAt: number; counterparty: string; z: number; flags: string[]; explain?: string[]; score: number; status?: string; level?: string; label?: string }[];
   riskUsers: { email: string; risk: number; reasons: string[]; balance: number; volumeOut: number; txCount: number }[];
   features: {
     daily: { date: string; volumeOut: number; txCount: number; usersNew: number }[];
@@ -53,6 +55,8 @@ type MlReport = {
     fraud?: Record<string, unknown>[];
   };
   custom: { notes?: string; engine?: string | null } | null;
+  scored?: { id: string; email: string; amount: number; createdAt: number; counterparty: string; score: number; level?: string; label?: string; explain?: string[]; flags?: string[] }[];
+  generatedAt?: number;
 };
 
 const KEY = "alfa-admin-key";
@@ -71,7 +75,18 @@ async function adminReq<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 function money(n: number) {
-  return (n || 0).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " ₽";
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "0 ₽";
+  const sign = x < 0 ? "−" : "";
+  const abs = Math.abs(x);
+  const fmt = (v: number, suffix: string) =>
+    sign + v.toLocaleString("ru-RU", { maximumFractionDigits: v >= 100 ? 1 : 2 }) + "\u00a0" + suffix + " ₽";
+  if (abs >= 1e18) return fmt(abs / 1e18, "квинтилл.");
+  if (abs >= 1e15) return fmt(abs / 1e15, "квадрилл.");
+  if (abs >= 1e12) return fmt(abs / 1e12, "трлн");
+  if (abs >= 1e9) return fmt(abs / 1e9, "млрд");
+  if (abs >= 1e6) return fmt(abs / 1e6, "млн");
+  return sign + abs.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) + " ₽";
 }
 
 function downloadJson(name: string, rows: unknown) {
@@ -98,7 +113,7 @@ export default function AdminPage() {
   const [editPass, setEditPass] = useState("");
   const [adjust, setAdjust] = useState("");
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [ops, setOps] = useState<{ id: string; email: string; name: string; amount: number; createdAt: number; type: string; counterparty?: string }[]>([]);
+  const [ops, setOps] = useState<{ id: string; email: string; name: string; amount: number; createdAt: number; type: string; counterparty?: string; status?: string; freezeReason?: string; mlAnomaly?: number; riskScore?: number; riskLabel?: string; riskExplain?: string[] }[]>([]);
   const [opsQ, setOpsQ] = useState("");
   const [opsType, setOpsType] = useState("");
   const [ml, setMl] = useState<MlReport | null>(null);
@@ -195,10 +210,21 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!ok || tab !== "ops") return;
-    const qs = new URLSearchParams();
-    if (opsQ) qs.set("q", opsQ);
-    if (opsType) qs.set("type", opsType);
-    void adminReq<{ txs: typeof ops }>("/api/admin/txs?" + qs.toString()).then((d) => setOps(d.txs));
+    let stop = false;
+    async function loadOps() {
+      const qs = new URLSearchParams();
+      if (opsQ) qs.set("q", opsQ);
+      if (opsType) qs.set("type", opsType);
+      try {
+        const d = await adminReq<{ txs: typeof ops }>("/api/admin/txs?" + qs.toString());
+        if (!stop) setOps(d.txs);
+      } catch {
+        /* ignore */
+      }
+    }
+    void loadOps();
+    const id = setInterval(() => void loadOps(), 2500);
+    return () => { stop = true; clearInterval(id); };
   }, [ok, tab, opsQ, opsType]);
 
   useEffect(() => {
@@ -210,13 +236,13 @@ export default function AdminPage() {
         const d = await adminReq<MlReport>("/api/admin/ml");
         if (stop) return;
         setMl(d);
-        setMlMsg((d.custom?.engine ? `Модель: ${d.custom.engine}. ` : "") + `Аномалий: ${d.anomalies?.length || 0}. Обновлено ${new Date().toLocaleTimeString("ru-RU")}.`);
+        setMlMsg(`Операций в отчёте: ${d.scored?.length || 0} · аномалий: ${d.anomalies?.length || 0} · ${new Date(d.generatedAt || Date.now()).toLocaleTimeString("ru-RU")}`);
       } catch (e) {
         if (!stop) setMlMsg(e instanceof Error ? e.message : "Ошибка ML");
       }
     }
     void loadMl(true);
-    const id = setInterval(() => void loadMl(false), 8000);
+    const id = setInterval(() => void loadMl(false), 2000);
     return () => { stop = true; clearInterval(id); };
   }, [ok, tab]);
 
@@ -225,6 +251,49 @@ export default function AdminPage() {
     if (!s) return users;
     return users.filter((u) => `${u.email} ${u.phone} ${u.lastName} ${u.firstName} ${u.walletId}`.toLowerCase().includes(s));
   }, [users, q]);
+
+  async function userOpEmail(email: string, op: string, body: Record<string, unknown> = {}) {
+    setActionMsg("");
+    try {
+      await adminReq("/api/admin/users/" + encodeURIComponent(email) + "/" + op, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      setActionMsg("Готово");
+      await loadList();
+      if (sel === email) {
+        const d = await adminReq<Detail>("/api/admin/users/" + encodeURIComponent(email));
+        setDetail(d);
+      }
+    } catch (e) {
+      setActionMsg(e instanceof Error ? e.message : "Ошибка");
+    }
+  }
+
+  async function txOp(id: string, op: "hold" | "release" | "reject", body: Record<string, unknown> = {}) {
+    setActionMsg("");
+    try {
+      await adminReq("/api/admin/txs/" + encodeURIComponent(id) + "/" + op, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      setActionMsg("Готово");
+      if (tab === "ops") {
+        const qs = new URLSearchParams();
+        if (opsQ) qs.set("q", opsQ);
+        if (opsType) qs.set("type", opsType);
+        const d = await adminReq<{ txs: typeof ops }>("/api/admin/txs?" + qs.toString());
+        setOps(d.txs);
+      }
+      if (sel) {
+        const d = await adminReq<Detail>("/api/admin/users/" + encodeURIComponent(sel));
+        setDetail(d);
+      }
+      await loadList();
+    } catch (e) {
+      setActionMsg(e instanceof Error ? e.message : "Ошибка");
+    }
+  }
 
   async function userOp(op: string, body: Record<string, unknown> = {}) {
     if (!detail) return;
@@ -283,7 +352,7 @@ export default function AdminPage() {
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className="px-4 py-2 rounded-[12px] text-[13px]"
+              className="px-4 py-2 rounded-[12px] text-[13px] pressable"
               style={{
                 background: tab === t.id ? "rgba(0,210,211,0.18)" : "#191C1C",
                 color: tab === t.id ? "#00D2D3" : "rgba(185,202,203,0.7)",
@@ -309,7 +378,7 @@ export default function AdminPage() {
               ].map(([k, v]) => (
                 <div key={k} className="rounded-[16px] p-4" style={{ background: "#191C1C" }}>
                   <p className="text-[12px] text-[rgba(185,202,203,0.5)]">{k}</p>
-                  <p className="text-[20px] text-[#00D2D3] mt-1">{v}</p>
+                  <p className="text-[18px] sm:text-[20px] text-[#00D2D3] mt-1 leading-tight break-words">{v}</p>
                 </div>
               ))}
             </div>
@@ -402,13 +471,13 @@ export default function AdminPage() {
                       <button type="button" className="px-3 py-2 rounded-[10px] text-[#0B1A1A]" style={{ background: "#00D2D3" }} onClick={() => void adminReq("/api/admin/users/" + encodeURIComponent(detail.user.email), { method: "PATCH", body: JSON.stringify({ email: editEmail, phone: editPhone, balance: Number(editBal), password: editPass }) }).then(() => { void loadList(); setSel(editEmail.trim().toLowerCase()); })}>Сохранить</button>
                       <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOp("adjust", { amount: Number(adjust), comment: "Ручная корректировка" })}>Провести корректировку</button>
                       {detail.user.frozen ? (
-                        <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOp("unfreeze")}>Разморозить</button>
+                        <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOp("unfreeze")}>Разморозить счёт</button>
                       ) : (
                         <button type="button" className="px-3 py-2 rounded-[10px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.1)" }} onClick={() => {
-                          const reason = prompt("Причина блокировки");
+                          const reason = prompt("Причина заморозки счёта");
                           if (reason === null) return;
-                          void userOp("freeze", { reason: reason.trim() || "Блокировка администратором" });
-                        }}>Заморозить</button>
+                          void userOp("freeze", { reason: reason.trim() || "Заморозка администратором: подозрение на мошенничество" });
+                        }}>Заморозить счёт</button>
                       )}
                       <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOp("kick")}>Сбросить сессии</button>
                       <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => {
@@ -424,7 +493,20 @@ export default function AdminPage() {
                     <p className="uppercase text-[11px] tracking-wider text-[rgba(185,202,203,0.45)] mt-2">Операции</p>
                     <div className="max-h-48 overflow-y-auto">
                       {detail.txs.map((t) => (
-                        <p key={t.id} className="py-1 border-b border-white/5">{new Date(t.createdAt).toLocaleString("ru-RU")} · {t.name} · {t.amount} ₽</p>
+                        <div key={t.id} className="py-1.5 border-b border-white/5">
+                          <p>{new Date(t.createdAt).toLocaleString("ru-RU")} · {t.name} · {money(t.amount)} · <span style={{ color: t.riskLabel === "Мошенник" ? "#FFB4AB" : t.riskLabel === "Терпимо" ? "#E8C07A" : "#48FFD5" }}>{t.riskLabel || "Норма"} {t.riskScore != null ? `${t.riskScore}/100` : ""}</span> {t.status === "held" ? <span className="text-[#FFB4AB]">ЗАМОРОЖЕНА</span> : t.status === "rejected" ? <span className="text-[#FFB4AB]">ОТКЛОНЕНА</span> : null}</p>
+                          {t.riskExplain?.length ? <p className="text-[11px] text-[rgba(185,202,203,0.55)]">{t.riskExplain.join(" · ")}</p> : null}
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {t.status === "held" ? (
+                              <>
+                                <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#0B1A1A]" style={{ background: "#00D2D3" }} onClick={() => void txOp(t.id, "release")}>Провести</button>
+                                <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(t.id, "reject")}>Вернуть</button>
+                              </>
+                            ) : t.status !== "rejected" ? (
+                              <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(t.id, "hold", { reason: "Заморозка администратором" })}>Заморозить операцию</button>
+                            ) : null}
+                          </div>
+                        </div>
                       ))}
                     </div>
                     <p className="uppercase text-[11px] tracking-wider text-[rgba(185,202,203,0.45)]">Контакты</p>
@@ -438,25 +520,50 @@ export default function AdminPage() {
 
         {tab === "ops" && (
           <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
+            {actionMsg && <p className="text-[#00D2D3] text-[13px] mb-2">{actionMsg}</p>}
             <div className="flex flex-wrap gap-2 mb-3">
               <input value={opsQ} onChange={(e) => setOpsQ(e.target.value)} placeholder="Поиск по почте, имени, получателю" className="flex-1 min-w-[200px] bg-black/30 rounded-[10px] px-3 py-2 text-[13px] outline-none" />
               <select value={opsType} onChange={(e) => setOpsType(e.target.value)} className="bg-black/30 rounded-[10px] px-3 py-2 text-[13px]">
                 <option value="">Все</option>
                 <option value="out">Списания</option>
                 <option value="in">Зачисления</option>
+                <option value="held">Замороженные</option>
+                <option value="rejected">Отклонённые</option>
               </select>
               <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3] text-[13px]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void adminReq<{ rows: unknown[] }>("/api/admin/export?kind=txs").then((d) => downloadJson("txs.json", d.rows))}>Экспорт JSON</button>
             </div>
             <div className="max-h-[70vh] overflow-y-auto text-[13px]">
               {ops.map((t) => (
-                <p key={t.id} className="py-2 border-b border-white/5">
-                  <span className="text-[rgba(185,202,203,0.5)]">{new Date(t.createdAt).toLocaleString("ru-RU")}</span>
-                  {" · "}
-                  <span className="text-[#00D2D3]">{t.email}</span>
-                  {" · "}
-                  {t.name} · <span style={{ color: t.amount < 0 ? "#FFB4AB" : "#48FFD5" }}>{t.amount} ₽</span>
-                  {t.counterparty ? ` · ${t.counterparty}` : ""}
-                </p>
+                <div key={t.id} className="py-2 border-b border-white/5">
+                  <p>
+                    <span className="text-[rgba(185,202,203,0.5)]">{new Date(t.createdAt).toLocaleString("ru-RU")}</span>
+                    {" · "}
+                    <span className="text-[#00D2D3]">{t.email}</span>
+                    {" · "}
+                    {t.name} · <span style={{ color: t.amount < 0 ? "#FFB4AB" : "#48FFD5" }}>{money(t.amount)}</span>
+                    {t.counterparty ? ` · ${t.counterparty}` : ""}
+                    {t.status === "held" ? <span className="text-[#FFB4AB]"> · ЗАМОРОЖЕНА</span> : null}
+                    {t.status === "rejected" ? <span className="text-[#FFB4AB]"> · ОТКЛОНЕНА</span> : null}
+                    {" · "}
+                    <span style={{ color: t.riskLabel === "Мошенник" || t.status === "held" ? "#FFB4AB" : t.riskLabel === "Терпимо" ? "#E8C07A" : "#48FFD5" }}>
+                      {t.riskLabel || "Норма"} {t.riskScore != null ? `${t.riskScore}/100` : ""}
+                    </span>
+                  </p>
+                  {t.riskExplain?.length ? (
+                    <p className="text-[11px] text-[rgba(185,202,203,0.55)] mt-0.5">{t.riskExplain.join(" · ")}</p>
+                  ) : null}
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {t.status === "held" ? (
+                      <>
+                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#0B1A1A]" style={{ background: "#00D2D3" }} onClick={() => void txOp(t.id, "release")}>Провести</button>
+                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(t.id, "reject")}>Вернуть</button>
+                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOpEmail(t.email, "unfreeze")}>Разморозить счёт</button>
+                      </>
+                    ) : t.status !== "rejected" ? (
+                      <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(t.id, "hold", { reason: "Заморозка администратором: подозрение на мошенничество" })}>Заморозить счёт и операцию</button>
+                    ) : null}
+                  </div>
+                </div>
               ))}
               {ops.length === 0 && <p className="text-[rgba(185,202,203,0.45)] py-6">Нет операций</p>}
             </div>
@@ -466,13 +573,14 @@ export default function AdminPage() {
         {tab === "ml" && (
           <div className="flex flex-col gap-4">
             <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
-              <p className="text-[16px] font-medium">Аналитика и прогноз</p>
-              <p className="text-[13px] text-[rgba(185,202,203,0.55)] mt-1">
-                Движок: {ml?.model || "…"}. Модель коллеги: <code>server/ml/anti_fraud.joblib</code> + <code>anti_fraud_infer.py</code>.
-                Фичи: <code>GET /api/admin/ml/features</code>, отчёт: <code>GET /api/admin/ml</code>.
+              <p className="text-[16px] font-medium">Как считается оценка</p>
+              <p className="text-[13px] text-[rgba(185,202,203,0.7)] mt-2 leading-relaxed">
+                В момент операции сервер сразу ставит баллы 1–100 и подпись: <b className="text-[#48FFD5]">Норма</b>, <b className="text-[#E8C07A]">Терпимо</b> или <b className="text-[#FFB4AB]">Мошенник</b>.
+                Стартовые 8 баллов, затем плюсы за нового получателя, ночь, новое устройство, сумму относительно среднего чека и нереалистичный размер.
+                Пополнение через банк не считается «новым получателем». Python-модель коллеги больше не держит запросы: список и прогноз берутся из уже посчитанных операций и обновляются каждые 2 секунды.
+                Клиенту баллы не показываются. Заморозка — только у «Мошенник» или вручную.
               </p>
               <p className="text-[12px] text-[#00D2D3] mt-2">{mlMsg}</p>
-              {ml?.custom?.notes && <p className="text-[12px] text-[rgba(185,202,203,0.7)] mt-1">{ml.custom.notes}</p>}
 
               <div className="mt-4">
                 <p className="text-[14px] font-medium mb-2">Фичи, используемые для обучения модели антифрода</p>
@@ -501,24 +609,52 @@ export default function AdminPage() {
             {ml && (
               <>
                 <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
-                  <p className="text-[14px] font-medium mb-3">Прогноз оборота списаний, {ml.horizonDays} дн.</p>
+                  <p className="text-[14px] font-medium mb-1">Оборот: факт (7 дн.) и прогноз ({ml.horizonDays} дн.)</p>
+                  <p className="text-[12px] text-[rgba(185,202,203,0.55)] mb-3">
+                    Сегодня: {money((ml.today?.volumeOut || 0) + (ml.today?.volumeIn || 0))} · списания {money(ml.today?.volumeOut || 0)} · пополнения {money(ml.today?.volumeIn || 0)} · операций {ml.today?.txCount || 0}
+                  </p>
                   <div className="flex items-end gap-1 h-36">
-                    {ml.forecast.map((f) => {
-                      const max = Math.max(...ml.forecast.map((x) => x.volumeOut), 1);
-                      const h = Math.max(6, Math.round((f.volumeOut / max) * 120));
+                    {[...(ml.history || []), ...ml.forecast].map((f) => {
+                      const series = [...(ml.history || []), ...ml.forecast];
+                      const val = f.volume ?? ((f.volumeOut || 0) + (f.volumeIn || 0));
+                      const max = Math.max(...series.map((x) => x.volume ?? ((x.volumeOut || 0) + (x.volumeIn || 0))), 1);
+                      const h = Math.max(6, Math.round((val / max) * 120));
                       return (
                         <div key={f.date} className="flex-1 flex flex-col items-center justify-end">
-                          <div className="w-full rounded-t-[6px]" style={{ height: h, background: "linear-gradient(#00D2D3,#48FFD5)" }} />
+                          <div className="w-full rounded-t-[6px]" style={{ height: h, background: f.actual ? "linear-gradient(#00D2D3,#48FFD5)" : "linear-gradient(#3d5c5c,#6aa8a8)" }} />
                           <p className="text-[9px] text-[rgba(185,202,203,0.5)] mt-1">{f.date.slice(5)}</p>
                         </div>
                       );
                     })}
                   </div>
                   <div className="mt-3 text-[12px] text-[rgba(185,202,203,0.7)]">
+                    {(ml.history || []).map((f) => (
+                      <span key={f.date} className="mr-3">{f.date}: {money(f.volume ?? 0)} факт</span>
+                    ))}
                     {ml.forecast.map((f) => (
-                      <span key={f.date} className="mr-3">{f.date}: {money(f.volumeOut)}</span>
+                      <span key={f.date} className="mr-3">{f.date}: {money(f.volume ?? f.volumeOut)} прогноз</span>
                     ))}
                   </div>
+                </div>
+
+                <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
+                  <p className="text-[14px] font-medium mb-2">Все операции · новые сверху</p>
+                  {(ml.scored || []).length === 0 && <p className="text-[13px] text-[rgba(185,202,203,0.45)]">Пока нет операций</p>}
+                  {(ml.scored || []).slice(0, 40).map((a) => (
+                    <div key={a.id} className="text-[12px] py-1.5 border-b border-white/5">
+                      <p>
+                        <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
+                        {" · "}
+                        <span style={{ color: a.level === "fraud" ? "#FFB4AB" : a.level === "watch" ? "#E8C07A" : "#48FFD5" }}>{a.label || "Норма"}</span>
+                        {" · "}
+                        {a.score}/100 · {a.email} · {money(a.amount)}
+                        {a.counterparty ? ` · ${a.counterparty}` : ""}
+                      </p>
+                      {(a.explain || a.flags || []).length ? (
+                        <p className="text-[11px] text-[rgba(185,202,203,0.55)] mt-0.5">{(a.explain || a.flags || []).join(" · ")}</p>
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-4">
@@ -526,11 +662,20 @@ export default function AdminPage() {
                     <p className="text-[14px] font-medium mb-2">Аномалии · новые сверху</p>
                     {ml.anomalies.length === 0 && <p className="text-[13px] text-[rgba(185,202,203,0.45)]">Пока нет выбросов</p>}
                     {ml.anomalies.slice(0, 40).map((a) => (
-                      <p key={a.id} className="text-[12px] py-1.5 border-b border-white/5">
-                        <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
-                        {" · "}
-                        {a.score}/100 · {a.email} · {a.amount} ₽ · {(a.flags || []).join(", ")}
-                      </p>
+                      <div key={a.id} className="text-[12px] py-1.5 border-b border-white/5">
+                        <p>
+                          <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
+                          {" · "}
+                          <span style={{ color: a.level === "fraud" ? "#FFB4AB" : "#E8C07A" }}>{a.label || (a.score >= 75 ? "Мошенник" : "Терпимо")}</span>
+                          {" · "}
+                          {a.score}/100 · {a.email} · {money(a.amount)} · {(a.explain || a.flags || []).join(" · ")}
+                        </p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(a.id, "hold", { reason: "Антифрод: подозрение на мошенничество" })}>Заморозить</button>
+                          <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#0B1A1A]" style={{ background: "#00D2D3" }} onClick={() => void txOp(a.id, "release")}>Провести</button>
+                          <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOpEmail(a.email, "unfreeze")}>Разморозить счёт</button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                   <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>

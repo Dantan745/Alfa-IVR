@@ -25,7 +25,7 @@ function Card({ className, style, children }: { className?: string; style?: CSSP
 }
 
 export default function HomePage({ onNavigate }: HomePageProps) {
-  const { user, wallet, txs, notes } = useWallet();
+  const { user, wallet, txs, notes, flashIds } = useWallet();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const tick = () => setNow(new Date());
@@ -43,6 +43,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
   const spent = txs.filter((t) => t.type === "expense").reduce((s, t) => s + Math.abs(t.amount), 0);
   const income = txs.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
   const hidden = !!wallet?.hideBalance;
+  const frozen = !!user?.frozen;
   return (
     <div className="flex-1 overflow-y-auto pb-4 px-4 sm:px-6 pt-2 max-w-[920px] mx-auto w-full">
       {/* Header */}
@@ -113,7 +114,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
           <button
             key={a.page}
             onClick={() => onNavigate(a.page)}
-            className="flex flex-col items-center gap-2"
+            className="flex flex-col items-center gap-2 pressable"
           >
             <div
               className="w-[56px] h-[56px] rounded-full flex items-center justify-center"
@@ -131,25 +132,23 @@ export default function HomePage({ onNavigate }: HomePageProps) {
         ))}
       </div>
 
-      {notes.some((n) => n.kind === "anomaly") && (
-      <button
-        type="button"
-        onClick={() => onNavigate("notifications")}
-        className="mb-4 px-4 py-3 rounded-[20px] flex items-center gap-3 w-full text-left pressable"
-        style={{ background: "rgba(255,180,171,0.08)", border: "1px solid rgba(255,180,171,0.2)" }}
+      {frozen && (
+      <div
+        className="mb-4 px-4 py-3 rounded-[20px] flex items-center gap-3"
+        style={{ background: "rgba(255,180,171,0.12)", border: "1px solid rgba(255,180,171,0.35)" }}
       >
-        <span className="material-symbols-outlined text-[#FFB4AB] text-[22px]">warning</span>
-        <div>
+        <span className="material-symbols-outlined text-[#FFB4AB] text-[22px]">ac_unit</span>
+        <div className="min-w-0 flex-1">
           <p className="text-[#FFB4AB] text-[13px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
-            Обнаружена аномалия
+            Счёт временно ограничен
           </p>
           <p className="text-[rgba(185,202,203,0.7)] text-[12px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
-            Необычная транзакция с незнакомого устройства
+            Операции недоступны. При необходимости напишите в поддержку.
           </p>
         </div>
-        <span className="material-symbols-outlined text-[rgba(185,202,203,0.4)] text-[18px] ml-auto">chevron_right</span>
-      </button>
+      </div>
       )}
+
 
       {/* Analytics row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
@@ -230,7 +229,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
               type="button"
               key={tx.id}
               onClick={() => onNavigate("tx", tx.id)}
-              className="w-full flex items-center gap-3 px-4 py-3.5 text-left pressable"
+              className={`w-full flex items-center gap-3 px-4 py-3.5 text-left pressable ${flashIds.includes(tx.id) ? "tx-flash" : ""}`}
               style={{ borderBottom: i < recentTx.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}
             >
               <div
@@ -244,7 +243,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
                   {tx.name}
                 </p>
                 <p className="text-[rgba(185,202,203,0.6)] text-[12px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
-                  {formatTxDate(tx.createdAt)}
+                  {formatTxDate(tx.createdAt)}{tx.status === "pending" ? " · в обработке" : ""}
                 </p>
               </div>
               <span

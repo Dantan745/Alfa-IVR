@@ -5,7 +5,7 @@ const filters = ["Все", "Расходы", "Доходы", "Переводы"]
 const dateFilters = ["Сегодня", "Неделя", "Месяц", "Всё время"];
 
 export default function HistoryPage({ onOpenTx }: { onOpenTx: (id: string) => void }) {
-  const { txs } = useWallet();
+  const { txs, flashIds } = useWallet();
   const [filter, setFilter] = useState("Все");
   const [dateFilter, setDateFilter] = useState("Всё время");
   const [search, setSearch] = useState("");
@@ -138,7 +138,7 @@ export default function HistoryPage({ onOpenTx }: { onOpenTx: (id: string) => vo
                 type="button"
                 key={tx.id}
                 onClick={() => onOpenTx(tx.id)}
-                className="w-full flex items-center gap-3 px-4 py-4 text-left pressable"
+                className={`w-full flex items-center gap-3 px-4 py-4 text-left pressable ${flashIds.includes(tx.id) ? "tx-flash" : ""}`}
                 style={{ borderBottom: i < filtered.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}
               >
                 <div
@@ -153,7 +153,7 @@ export default function HistoryPage({ onOpenTx }: { onOpenTx: (id: string) => vo
                   </p>
                   <div className="flex items-center gap-2">
                     <span className="text-[rgba(185,202,203,0.5)] text-[11px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
-                      {formatTxDate(tx.createdAt)}
+                      {formatTxDate(tx.createdAt)}{tx.status === "pending" ? " · в обработке" : ""}
                     </span>
                     <span
                       className="text-[10px] px-1.5 py-0.5 rounded-full"
