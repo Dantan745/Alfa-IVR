@@ -52,9 +52,9 @@ export function buildFraudSample(store, { email, amount, payee, now = Date.now()
 export function extractFraudRows(store) {
   const users = store.users || {};
   return (store.txs || [])
-    .filter((t) => t.amount < 0)
+    .filter((t) => t.amount < 0 || Math.abs(t.amount) >= 10000)
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-    .slice(0, 80)
+    .slice(0, 120)
     .map((t) => {
       const u = users[t.email] || {};
       const sample = buildFraudSample(store, {
@@ -71,10 +71,11 @@ export function extractFraudRows(store) {
         email: t.email,
         createdAt: t.createdAt,
         counterparty: t.counterparty || t.name || "",
+        signedAmount: t.amount,
+        type: t.type,
+        savedScore: t.mlScore,
+        savedAnomaly: t.mlAnomaly,
         ...sample,
-        saved: t.mlFeatures || null,
-        score: t.mlScore,
-        anomaly: t.mlAnomaly,
       };
     });
 }

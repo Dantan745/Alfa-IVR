@@ -996,6 +996,7 @@ const server = http.createServer(async (req, res) => {
         const amount = Number(b.amount);
         try { assertNotFrozen(email); } catch (e) { return send(res, 400, { error: e.message }); }
         if (!(amount > 0)) return send(res, 400, { error: "Укажите сумму" });
+        const fraud = scoreOutgoing(email, amount, "Альфа-Банк", sess);
         addTx(email, {
           name: "Пополнение",
           amount,
@@ -1004,8 +1005,14 @@ const server = http.createServer(async (req, res) => {
           category: "Доходы",
           comment: "С карты",
           counterparty: "Альфа-Банк",
+          mlFeatures: fraud.sample,
+          mlScore: fraud.final_score,
+          mlAnomaly: (fraud.anomaly || amount >= 100000) ? 1 : 0,
         });
         addNote(email, "Поступление", `Пополнение: ${amount.toLocaleString("ru-RU")} ₽`, "transfer");
+        if (fraud.anomaly || amount >= 100000) {
+          addNote(email, "Аномалия ML", `Подозрительное пополнение ${amount.toLocaleString("ru-RU")} ₽ · риск ${Math.round((fraud.final_score || 0) * 100)}/100`, "anomaly");
+        }
         saveDb(store);
         send(res, 200, snapshot(email));
         return;
