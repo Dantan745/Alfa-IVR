@@ -219,16 +219,20 @@ export function runCustomModel(features) {
     const s = scoredRaw[i];
     const final = Number(s?.final_score ?? s?.score ?? row.savedScore ?? 0);
     const anomaly = s ? Number(s.anomaly) === 1 : Number(row.savedAnomaly) === 1;
+    const ticks = Math.round(final * 100);
+    const exact = Math.round(final * 100) / 100;
     const item = {
       id: row.id,
       email: row.email,
       amount: row.signedAmount != null ? row.signedAmount : -row.amount,
       createdAt: row.createdAt,
       counterparty: row.counterparty,
-      z: Number(final.toFixed(3)),
+      z: exact,
       flags: anomaly ? ["IsolationForest"] : [],
-      explain: s ? [`final_score ${final.toFixed(3)}`] : [],
-      score: Math.round(final * 100),
+      explain: [`final_score ${exact}`, `шкала ${ticks}`],
+      score: ticks,
+      scoreExact: exact,
+      scoreBar: Math.min(100, Math.max(0, ticks)),
       level: anomaly ? "fraud" : "ok",
       label: anomaly ? "Фрод" : "Норма",
       engine: s?.engine || "anti_fraud.joblib",

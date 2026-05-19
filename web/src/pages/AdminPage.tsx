@@ -22,7 +22,7 @@ type UserRow = {
 type Detail = {
   user: UserRow;
   wallet: { balance: number; pin: string; hideBalance: boolean; biometric: boolean };
-  txs: { id: string; name: string; amount: number; createdAt: number; type: string; counterparty?: string; status?: string; freezeReason?: string; riskScore?: number; riskLabel?: string; riskExplain?: string[] }[];
+  txs: { id: string; name: string; amount: number; createdAt: number; type: string; counterparty?: string; status?: string; freezeReason?: string; riskScore?: number; riskScoreExact?: number; riskBar?: number; riskLabel?: string; riskExplain?: string[] }[];
   contacts: { name: string; phone: string }[];
   notes: { title: string; body: string; createdAt: number }[];
 };
@@ -45,7 +45,7 @@ type MlReport = {
   today?: { date: string; volumeOut: number; volumeIn?: number; txCount: number };
   history?: { date: string; volumeOut: number; volumeIn?: number; volume?: number; txCount?: number; actual?: boolean }[];
   forecast: { date: string; volumeOut: number; volumeIn?: number; volume?: number; usersNew: number; actual?: boolean }[];
-  anomalies: { id: string; email: string; amount: number; createdAt: number; counterparty: string; z: number; flags: string[]; explain?: string[]; score: number; status?: string; level?: string; label?: string }[];
+  anomalies: { id: string; email: string; amount: number; createdAt: number; counterparty: string; z: number; flags: string[]; explain?: string[]; score: number; scoreExact?: number; scoreBar?: number; status?: string; level?: string; label?: string }[];
   riskUsers: { email: string; risk: number; reasons: string[]; balance: number; volumeOut: number; txCount: number }[];
   features: {
     daily: { date: string; volumeOut: number; txCount: number; usersNew: number }[];
@@ -55,7 +55,7 @@ type MlReport = {
     fraud?: Record<string, unknown>[];
   };
   custom: { notes?: string; engine?: string | null } | null;
-  scored?: { id: string; email: string; amount: number; createdAt: number; counterparty: string; score: number; level?: string; label?: string; explain?: string[]; flags?: string[] }[];
+  scored?: { id: string; email: string; amount: number; createdAt: number; counterparty: string; score: number; scoreExact?: number; scoreBar?: number; level?: string; label?: string; explain?: string[]; flags?: string[] }[];
   generatedAt?: number;
 };
 
@@ -72,6 +72,26 @@ async function adminReq<T>(path: string, init: RequestInit = {}): Promise<T> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as { error?: string }).error || "Ошибка");
   return data as T;
+}
+
+function FraudMark({ label, ticks, exact, bar }: { label?: string; ticks?: number | null; exact?: number | null; bar?: number | null }) {
+  const fraud = label === "Фрод" || label === "Мошенник";
+  const shownExact = exact != null ? exact : ticks != null ? Math.round(ticks) / 100 : null;
+  const fill = bar != null ? bar : ticks != null ? Math.min(100, Math.max(0, ticks)) : 0;
+  return (
+    <span className="inline-flex items-center gap-2 align-middle flex-wrap">
+      <span style={{ color: fraud ? "#FFB4AB" : "#48FFD5" }}>{label || "Норма"}</span>
+      {ticks != null ? (
+        <>
+          <span className="text-[rgba(185,202,203,0.7)]">{shownExact}</span>
+          <span className="inline-block w-[72px] h-[6px] rounded-full bg-white/10 overflow-hidden shrink-0">
+            <span className="block h-full rounded-full" style={{ width: `${fill}%`, background: "linear-gradient(90deg,#00D2D3,#E8C07A)" }} />
+          </span>
+          <span className="text-[rgba(185,202,203,0.55)]">{ticks > 100 ? `${ticks}` : `${ticks}/100`}</span>
+        </>
+      ) : null}
+    </span>
+  );
 }
 
 function money(n: number) {
@@ -113,7 +133,7 @@ export default function AdminPage() {
   const [editPass, setEditPass] = useState("");
   const [adjust, setAdjust] = useState("");
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [ops, setOps] = useState<{ id: string; email: string; name: string; amount: number; createdAt: number; type: string; counterparty?: string; status?: string; freezeReason?: string; mlAnomaly?: number; riskScore?: number; riskLabel?: string; riskExplain?: string[] }[]>([]);
+  const [ops, setOps] = useState<{ id: string; email: string; name: string; amount: number; createdAt: number; type: string; counterparty?: string; status?: string; freezeReason?: string; mlAnomaly?: number; riskScore?: number; riskScoreExact?: number; riskBar?: number; riskLabel?: string; riskExplain?: string[] }[]>([]);
   const [opsQ, setOpsQ] = useState("");
   const [opsType, setOpsType] = useState("");
   const [ml, setMl] = useState<MlReport | null>(null);
@@ -494,7 +514,7 @@ export default function AdminPage() {
                     <div className="max-h-48 overflow-y-auto">
                       {detail.txs.map((t) => (
                         <div key={t.id} className="py-1.5 border-b border-white/5">
-                          <p>{new Date(t.createdAt).toLocaleString("ru-RU")} · {t.name} · {money(t.amount)} · <span style={{ color: t.riskLabel === "Фрод" || t.riskLabel === "Мошенник" ? "#FFB4AB" : "#48FFD5" }}>{t.riskLabel || "Норма"} {t.riskScore != null ? `${t.riskScore}/100` : ""}</span> {t.status === "held" ? <span className="text-[#FFB4AB]">ЗАМОРОЖЕНА</span> : t.status === "rejected" ? <span className="text-[#FFB4AB]">ОТКЛОНЕНА</span> : null}</p>
+                          <p>{new Date(t.createdAt).toLocaleString("ru-RU")} · {t.name} · {money(t.amount)} · <FraudMark label={t.riskLabel || "Норма"} ticks={t.riskScore} exact={t.riskScoreExact} bar={t.riskBar} /> {t.status === "held" ? <span className="text-[#FFB4AB]">ЗАМОРОЖЕНА</span> : t.status === "rejected" ? <span className="text-[#FFB4AB]">ОТКЛОНЕНА</span> : null}</p>
                           {t.riskExplain?.length ? <p className="text-[11px] text-[rgba(185,202,203,0.55)]">{t.riskExplain.join(" · ")}</p> : null}
                           <div className="flex flex-wrap gap-1 mt-1">
                             {t.status === "held" ? (
@@ -545,9 +565,7 @@ export default function AdminPage() {
                     {t.status === "held" ? <span className="text-[#FFB4AB]"> · ЗАМОРОЖЕНА</span> : null}
                     {t.status === "rejected" ? <span className="text-[#FFB4AB]"> · ОТКЛОНЕНА</span> : null}
                     {" · "}
-                    <span style={{ color: t.riskLabel === "Фрод" || t.riskLabel === "Мошенник" || t.status === "held" ? "#FFB4AB" : "#48FFD5" }}>
-                      {t.riskLabel || "Норма"} {t.riskScore != null ? `${t.riskScore}/100` : ""}
-                    </span>
+                    <FraudMark label={t.riskLabel || "Норма"} ticks={t.riskScore} exact={t.riskScoreExact} bar={t.riskBar} />
                   </p>
                   {t.riskExplain?.length ? (
                     <p className="text-[11px] text-[rgba(185,202,203,0.55)] mt-0.5">{t.riskExplain.join(" · ")}</p>
@@ -575,9 +593,9 @@ export default function AdminPage() {
             <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
               <p className="text-[16px] font-medium">Как считается оценка</p>
               <p className="text-[13px] text-[rgba(185,202,203,0.7)] mt-2 leading-relaxed">
-                Оценку ставит IsolationForest (<b className="text-[#00D2D3]">anti_fraud.joblib</b>): сервер собирает 8 фичей и вызывает <b className="text-[#00D2D3]">score.py</b>.
-                Метка <b className="text-[#FFB4AB]">Фрод</b> — это <b>anomaly</b> модели по её порогу. Балльной таблицы больше нет.
-                Если модель пометила операцию, перевод, QR, массовый платёж и пополнение отклоняются до списания. Ручная заморозка в админке остаётся отдельно.
+                Модель отдаёт два поля отдельно. <b className="text-[#FFB4AB]">Фрод / Норма</b> берётся только из <b>anomaly</b> (порог 0.71 внутри joblib: ниже — Норма, от 0.71 — Фрод и платёж отклоняется).
+                <b>final_score</b> — непрерывный скор, не вероятность: в админке число <b>round(final_score × 100)/100</b>, шкала <b>min(100, round(final_score × 100))</b>. Если скор &gt; 1, число на экране может быть больше 100, полоска всё равно упирается в 100.
+                Шкалу в решение не превращаем: 66 ещё может быть Норма, 71 — уже Фрод, если так сказала метка. Клиенту ни метка, ни число не отдаются.
               </p>
               <p className="text-[12px] text-[#00D2D3] mt-2">{mlMsg}</p>
 
@@ -645,9 +663,9 @@ export default function AdminPage() {
                       <p>
                         <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
                         {" · "}
-                        <span style={{ color: a.level === "fraud" ? "#FFB4AB" : a.level === "watch" ? "#E8C07A" : "#48FFD5" }}>{a.label || "Норма"}</span>
+                        <FraudMark label={a.label || "Норма"} ticks={a.score} exact={a.scoreExact} bar={a.scoreBar} />
                         {" · "}
-                        {a.score}/100 · {a.email} · {money(a.amount)}
+                        {a.email} · {money(a.amount)}
                         {a.counterparty ? ` · ${a.counterparty}` : ""}
                       </p>
                       {(a.explain || a.flags || []).length ? (
@@ -666,9 +684,9 @@ export default function AdminPage() {
                         <p>
                           <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
                           {" · "}
-                          <span style={{ color: a.level === "fraud" ? "#FFB4AB" : "#48FFD5" }}>{a.label || (a.level === "fraud" ? "Фрод" : "Норма")}</span>
+                          <FraudMark label={a.label || (a.level === "fraud" ? "Фрод" : "Норма")} ticks={a.score} exact={a.scoreExact} bar={a.scoreBar} />
                           {" · "}
-                          {a.score}/100 · {a.email} · {money(a.amount)} · {(a.explain || a.flags || []).join(" · ")}
+                          {a.email} · {money(a.amount)} · {(a.explain || a.flags || []).join(" · ")}
                         </p>
                         <div className="flex flex-wrap gap-1 mt-1">
                           <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(a.id, "hold", { reason: "Антифрод: подозрение на мошенничество" })}>Заморозить</button>
