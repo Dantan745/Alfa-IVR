@@ -5,7 +5,7 @@ import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { deliver, loadNotify, persistNotify, publicNotify, saveNotify } from "./notify.mjs";
-import { buildReport, extractFeatures, scoreWithFriendModel } from "./ml/index.mjs";
+import { buildReport, extractFeatures, runCustomModel, scoreWithFriendModel } from "./ml/index.mjs";
 import { buildFraudSample } from "./ml/features.mjs";
 import { formatRuPhone, isRuMobile, ruMobileDigits, samePhone } from "./phone.mjs";
 
@@ -239,31 +239,49 @@ function passwordOk(user, password) {
   return false;
 }
 
-function mlDisplay(final) {
+function modelMarked(anomaly) {
+  return anomaly === 0 || anomaly === 1 || anomaly === "0" || anomaly === "1";
+}
+
+function scoreNumber(final) {
   const n = Number(final);
   if (!Number.isFinite(n)) return null;
-  const ticks = Math.round(n * 100);
-  return {
-    exact: Math.round(n * 100) / 100,
-    ticks,
-    bar: Math.min(100, Math.max(0, ticks)),
-  };
+  return Math.round(n * 100) / 100;
+}
+
+function liveModelMarks() {
+  const scored = runCustomModel(extractFeatures(store)).scored || [];
+  const map = new Map();
+  for (const row of scored) {
+    if (row.label === "Фрод" || row.label === "Норма") map.set(row.id, row);
+  }
+  return map;
+}
+
+function decorateAdminTx(t, marks) {
+  const live = marks.get(t.id);
+  if (!live) return decorateTx(t);
+  return decorateTx({
+    ...t,
+    mlScore: live.scoreExact,
+    mlAnomaly: live.label === "Фрод" ? 1 : 0,
+  });
 }
 
 function decorateTx(t) {
-  const final = Number(t.mlScore);
-  const shown = mlDisplay(final);
-  const anomaly = Number(t.mlAnomaly) === 1;
+  const score = scoreNumber(t.mlScore);
+  const marked = modelMarked(t.mlAnomaly);
+  const anomaly = marked && Number(t.mlAnomaly) === 1 ? 1 : marked ? 0 : null;
   return {
     ...t,
-    mlScore: shown ? shown.exact : null,
-    mlAnomaly: anomaly ? 1 : 0,
-    riskLevel: anomaly ? "fraud" : "ok",
-    riskLabel: !shown ? "" : anomaly ? "Фрод" : "Норма",
-    riskExplain: shown ? [`final_score ${shown.exact} · шкала ${shown.ticks}`] : [],
-    riskScore: shown ? shown.ticks : null,
-    riskScoreExact: shown ? shown.exact : null,
-    riskBar: shown ? shown.bar : null,
+    mlScore: score,
+    mlAnomaly: anomaly,
+    riskLabel: anomaly == null ? "" : anomaly ? "Фрод" : "Норма",
+    riskScoreExact: score,
+    riskExplain: [],
+    riskScore: null,
+    riskBar: null,
+    riskLevel: anomaly == null ? "" : anomaly ? "fraud" : "ok",
   };
 }
 
@@ -367,16 +385,16 @@ function scoreOutgoing(email, amount, payee, sess, type = "expense") {
     type,
   });
   const scored = scoreWithFriendModel([sample])[0];
-  if (!scored) {
+  if (!scored || !modelMarked(scored.anomaly)) {
     console.warn("[ml] IsolationForest недоступен, операция без метки модели");
-    return { sample, score: 0, final_score: 0, anomaly: 0, engine: "unavailable" };
+    return { sample, score: null, final_score: null, anomaly: null, engine: "unavailable" };
   }
-  const final = Number(scored.final_score ?? scored.score ?? 0);
+  const final = scoreNumber(scored.final_score ?? scored.score);
   return {
     sample,
     ...scored,
     final_score: final,
-    anomaly: scored.anomaly ? 1 : 0,
+    anomaly: Number(scored.anomaly) === 1 ? 1 : 0,
     engine: scored.engine || "anti_fraud.joblib",
   };
 }
@@ -390,10 +408,11 @@ function clientBlockedMsg() {
 }
 
 function mlPatch(fraud) {
+  const marked = fraud && fraud.engine !== "unavailable" && modelMarked(fraud.anomaly);
   return {
     mlFeatures: fraud.sample,
-    mlScore: fraud.final_score,
-    mlAnomaly: fraud.anomaly ? 1 : 0,
+    mlScore: marked ? fraud.final_score : null,
+    mlAnomaly: marked ? (Number(fraud.anomaly) === 1 ? 1 : 0) : null,
   };
 }
 
@@ -973,7 +992,8 @@ const server = http.createServer(async (req, res) => {
           if (q) {
             rows = rows.filter((t) => `${t.email} ${t.name} ${t.counterparty} ${t.category}`.toLowerCase().includes(q));
           }
-          send(res, 200, { txs: rows.slice(0, 300).map(decorateTx), total: rows.length });
+          const marks = liveModelMarks();
+          send(res, 200, { txs: rows.slice(0, 300).map((t) => decorateAdminTx(t, marks)), total: rows.length });
           return;
         }
         const txAct = p.match(/^\/api\/admin\/txs\/([^/]+)\/(hold|release|reject)$/);
@@ -1071,10 +1091,11 @@ const server = http.createServer(async (req, res) => {
           const user = store.users[email];
           if (!user) return send(res, 404, { error: "Нет пользователя" });
           if (req.method === "GET") {
+            const marks = liveModelMarks();
             send(res, 200, {
               user: { ...publicUser(user, { admin: true }), lastCode: lastCodeFor(email), balance: store.wallets[email]?.balance || 0, txCount: 0 },
               wallet: store.wallets[email],
-              txs: store.txs.filter((t) => t.email === email).sort((a, b) => b.createdAt - a.createdAt).map(decorateTx),
+              txs: store.txs.filter((t) => t.email === email).sort((a, b) => b.createdAt - a.createdAt).map((t) => decorateAdminTx(t, marks)),
               contacts: store.contacts.filter((c) => c.email === email),
               notes: store.notes.filter((n) => n.email === email),
             });

@@ -1,21 +1,7 @@
 /**
- * Аналитика и прогнозы.
- *
- * Сейчас работает baseline (скользящее среднее + линейный тренд + z-score).
- * Коллега: замените `runCustomModel` на свою модель (sklearn / ONNX / TensorFlow).
- * Если `runCustomModel` возвращает объект — он подмешивается в отчёт.
- *
- * Вход extractFeatures(store):
- *   daily[]     — ряды по дням: usersNew, volumeOut, volumeIn, txCount, avgCheck
- *   users[]     — признаки по клиенту: баланс, оборот, частота, уникальные получатели
- *   txs[]       — плоский журнал для обучения
- *
- * Выход buildReport(store):
- *   baseline    — эвристики
- *   custom      — результат runCustomModel или null
- *   forecast    — прогноз оборота на N дней
- *   anomalies   — подозрительные операции
- *   riskUsers   — клиенты с повышенным риском
+ * Прогноз оборота и показ скора антифрода.
+ * Фрод / Норма ставит только anomaly из anti_fraud.joblib.
+ * anti_fraud_infer.py и joblib отсюда не меняются.
  */
 
 import { spawnSync } from "node:child_process";
@@ -80,12 +66,6 @@ function dayKey(ts) {
 function mean(arr) {
   if (!arr.length) return 0;
   return arr.reduce((s, x) => s + x, 0) / arr.length;
-}
-
-function stdev(arr) {
-  if (arr.length < 2) return 0;
-  const m = mean(arr);
-  return Math.sqrt(arr.reduce((s, x) => s + (x - m) ** 2, 0) / (arr.length - 1));
 }
 
 function linearForecast(values, horizon) {
@@ -184,29 +164,14 @@ export function extractFeatures(store) {
   };
 }
 
-export function mergeAnomalies(...lists) {
-  const map = new Map();
-  for (const list of lists) {
-    for (const a of list || []) {
-      if (!a?.id) continue;
-      const prev = map.get(a.id);
-      if (!prev) {
-        map.set(a.id, a);
-        continue;
-      }
-      map.set(a.id, {
-        ...prev,
-        ...a,
-        score: Math.max(Number(prev.score) || 0, Number(a.score) || 0),
-        flags: [...new Set([...(prev.flags || []), ...(a.flags || [])])],
-        createdAt: Math.max(prev.createdAt || 0, a.createdAt || 0),
-        level: (Number(a.score) >= Number(prev.score) ? a.level : prev.level) || a.level || prev.level,
-        label: (Number(a.score) >= Number(prev.score) ? a.label : prev.label) || a.label || prev.label,
-        explain: [...new Set([...(prev.explain || []), ...(a.explain || [])])],
-      });
-    }
-  }
-  return [...map.values()].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0) || b.score - a.score);
+function modelMarked(anomaly) {
+  return anomaly === 0 || anomaly === 1 || anomaly === "0" || anomaly === "1";
+}
+
+function scoreNumber(final) {
+  const n = Number(final);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 100) / 100;
 }
 
 export function runCustomModel(features) {
@@ -217,104 +182,31 @@ export function runCustomModel(features) {
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const s = scoredRaw[i];
-    const final = Number(s?.final_score ?? s?.score ?? row.savedScore ?? 0);
-    const anomaly = s ? Number(s.anomaly) === 1 : Number(row.savedAnomaly) === 1;
-    const ticks = Math.round(final * 100);
-    const exact = Math.round(final * 100) / 100;
+    const live = s && modelMarked(s.anomaly);
+    const saved = !live && modelMarked(row.savedAnomaly);
+    const final = live ? scoreNumber(s.final_score ?? s.score) : saved ? scoreNumber(row.savedScore) : null;
+    const anomaly = live ? (Number(s.anomaly) === 1 ? 1 : 0) : saved ? (Number(row.savedAnomaly) === 1 ? 1 : 0) : null;
     const item = {
       id: row.id,
       email: row.email,
       amount: row.signedAmount != null ? row.signedAmount : -row.amount,
       createdAt: row.createdAt,
       counterparty: row.counterparty,
-      z: exact,
-      flags: anomaly ? ["IsolationForest"] : [],
-      explain: [`final_score ${exact}`, `шкала ${ticks}`],
-      score: ticks,
-      scoreExact: exact,
-      scoreBar: Math.min(100, Math.max(0, ticks)),
-      level: anomaly ? "fraud" : "ok",
-      label: anomaly ? "Фрод" : "Норма",
-      engine: s?.engine || "anti_fraud.joblib",
+      score: final,
+      scoreExact: final,
+      label: anomaly == null ? "" : anomaly ? "Фрод" : "Норма",
+      engine: live ? (s.engine || "anti_fraud.joblib") : saved ? "anti_fraud.joblib" : "unavailable",
     };
     scored.push(item);
-    if (anomaly) anomalies.push(item);
+    if (anomaly === 1) anomalies.push(item);
   }
   return {
-    engine: scoredRaw.some(Boolean) ? "anti_fraud.joblib" : "unavailable",
-    notes: "Метку ставит IsolationForest из anti_fraud.joblib. Балльных правил нет.",
+    engine: scoredRaw.some((s) => s && modelMarked(s.anomaly)) ? "anti_fraud.joblib" : "unavailable",
+    notes: "Метку ставит только anomaly модели. Скор — final_score. Отдельных правил нет.",
     anomalies: anomalies.slice(0, 60),
     scored: scored.slice(0, 80),
     fraudFeatures: FRAUD_FEATURES,
   };
-}
-
-function baselineAnomalies(features) {
-  const byUser = new Map();
-  for (const t of features.txs) {
-    if (!byUser.has(t.email)) byUser.set(t.email, []);
-    byUser.get(t.email).push(t.abs);
-  }
-  const out = [];
-  for (const t of features.txs) {
-    const hist = byUser.get(t.email) || [];
-    const m = mean(hist);
-    const s = stdev(hist);
-    const z = s ? (t.abs - m) / s : 0;
-    const flags = [];
-    if (Math.abs(z) >= 2.5 && t.abs >= 10000) flags.push("сумма сильно выше обычного");
-    if (t.abs > 10000 && t.type === "expense") flags.push("крупное списание");
-    if (t.abs >= 100000 && t.type === "income") flags.push("крупное пополнение");
-    if (t.abs >= 1e12) flags.push("нереалистичная сумма");
-    if (flags.length) {
-      out.push({
-        id: t.id,
-        email: t.email,
-        amount: t.amount,
-        createdAt: t.createdAt,
-        counterparty: t.counterparty,
-        z: Number(z.toFixed(2)),
-        flags,
-        score: Math.min(100, Math.round(40 + Math.abs(z) * 15)),
-        level: t.abs >= 100000 ? "fraud" : "watch",
-        label: t.abs >= 100000 ? "Мошенник" : "Терпимо",
-      });
-    }
-  }
-  out.sort((a, b) => b.score - a.score);
-  return out.slice(0, 40);
-}
-
-function baselineRisk(features) {
-  return features.users
-    .map((u) => {
-      let score = 0;
-      const reasons = [];
-      if (u.txCount >= 3 && u.uniquePayees <= 1 && u.volumeOut > 20000) {
-        score += 25;
-        reasons.push("почти все переводы одному получателю");
-      }
-      if (u.ageDays < 2 && u.volumeOut > 15000) {
-        score += 30;
-        reasons.push("новый счёт и крупный оборот");
-      }
-      if (u.avgOut > 25000) {
-        score += 20;
-        reasons.push("высокий средний чек");
-      }
-      if (u.frozen) {
-        score += 15;
-        reasons.push("уже заморожен");
-      }
-      if (u.idleDays > 21 && u.balance > 50000) {
-        score += 10;
-        reasons.push("крупный баланс без активности");
-      }
-      return { ...u, risk: Math.min(100, score), reasons };
-    })
-    .filter((u) => u.risk >= 20)
-    .sort((a, b) => b.risk - a.risk)
-    .slice(0, 20);
 }
 
 export function buildReport(store, { horizonDays = 7 } = {}) {
@@ -340,25 +232,18 @@ export function buildReport(store, { horizonDays = 7 } = {}) {
     actual: true,
   }));
 
-  const baseline = {
-    engine: "baseline-v1",
-    today: last,
-    history,
-    forecast: dates.map((date, i) => ({
-      date,
-      volumeOut: Math.round(forecastOut[i]),
-      volumeIn: Math.round(forecastIn[i]),
-      volume: Math.round(forecastVolume[i]),
-      usersNew: Number(forecastUsers[i].toFixed(2)),
-      actual: false,
-    })),
-    anomalies: baselineAnomalies(features),
-    riskUsers: baselineRisk(features),
-  };
+  const forecast = dates.map((date, i) => ({
+    date,
+    volumeOut: Math.round(forecastOut[i]),
+    volumeIn: Math.round(forecastIn[i]),
+    volume: Math.round(forecastVolume[i]),
+    usersNew: Number(forecastUsers[i].toFixed(2)),
+    actual: false,
+  }));
 
   const custom = runCustomModel(features);
   return {
-    model: custom ? "custom+baseline" : "baseline-v1",
+    model: custom.engine,
     horizonDays,
     features: {
       daily: features.daily,
@@ -367,14 +252,19 @@ export function buildReport(store, { horizonDays = 7 } = {}) {
       fraud: features.fraud,
       fraudFeatures: FRAUD_FEATURES,
     },
-    baseline,
+    baseline: {
+      engine: "forecast-v1",
+      today: last,
+      history,
+      forecast,
+    },
     custom,
-    forecast: custom?.forecast || baseline.forecast,
-    history: baseline.history,
-    scored: custom?.scored || [],
+    forecast,
+    history,
+    scored: custom.scored,
     generatedAt: Date.now(),
     today: last,
-    anomalies: (custom?.anomalies || []).slice(0, 60),
-    riskUsers: custom?.riskUsers || baseline.riskUsers,
+    anomalies: custom.anomalies,
+    riskUsers: [],
   };
 }
