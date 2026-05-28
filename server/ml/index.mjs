@@ -4,7 +4,7 @@
  * anti_fraud_infer.py и joblib отсюда не меняются.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { extractFraudRows, FRAUD_FEATURES } from "./features.mjs";
@@ -15,8 +15,12 @@ const ML_DIR = path.dirname(fileURLToPath(import.meta.url));
 let cachedPy;
 function pythonBin() {
   if (cachedPy !== undefined) return cachedPy;
+  if (process.env.PYTHON) {
+    cachedPy = process.env.PYTHON;
+    return cachedPy;
+  }
   cachedPy = null;
-  for (const cmd of [process.env.PYTHON, "python", "py", "python3"].filter(Boolean)) {
+  for (const cmd of ["python", "py", "python3"]) {
     const probe = spawnSync(cmd, ["-c", "import joblib, numpy, sklearn"], { encoding: "utf8", timeout: 20000 });
     if (probe.status === 0) {
       cachedPy = cmd;
@@ -24,6 +28,74 @@ function pythonBin() {
     }
   }
   return cachedPy;
+}
+
+function parseScoreOutput(text, list) {
+  try {
+    const raw = String(text || "");
+    const start = raw.search(/[\[{]/);
+    const parsed = JSON.parse(start >= 0 ? raw.slice(start) : raw);
+    const rows = Array.isArray(parsed) ? parsed : [parsed];
+    return list.map((_, i) => rows[i] ?? null);
+  } catch (e) {
+    console.warn("[ml] python score json:", e.message);
+    return list.map(() => null);
+  }
+}
+
+let scoreChain = Promise.resolve();
+
+export function scoreWithFriendModelAsync(samples) {
+  const list = Array.isArray(samples) ? samples : [samples];
+  const job = scoreChain.then(() => runScore(list));
+  scoreChain = job.then(() => {}, () => {});
+  return job;
+}
+
+function runScore(list) {
+  if (!list.length) return Promise.resolve([]);
+  const bin = pythonBin();
+  if (!bin) return Promise.resolve(list.map(() => null));
+  return new Promise((resolve) => {
+    let out = "";
+    let err = "";
+    let settled = false;
+    const finish = (rows) => {
+      if (settled) return;
+      settled = true;
+      resolve(rows);
+    };
+    let child;
+    try {
+      child = spawn(bin, [path.join(ML_DIR, "score.py")], {
+        windowsHide: true,
+        env: { ...process.env, PYTHONWARNINGS: "ignore" },
+      });
+    } catch (e) {
+      console.warn("[ml] python score threw:", e.message);
+      finish(list.map(() => null));
+      return;
+    }
+    const timer = setTimeout(() => {
+      child.kill();
+      console.warn("[ml] python score timeout");
+      finish(list.map(() => null));
+    }, 25000);
+    child.stdout.on("data", (chunk) => { out += chunk; });
+    child.stderr.on("data", (chunk) => { err += chunk; });
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      console.warn("[ml] python score threw:", e.message);
+      finish(list.map(() => null));
+    });
+    child.on("close", () => {
+      clearTimeout(timer);
+      if (!out.trim()) console.warn("[ml] python score failed:", err.slice(0, 400));
+      finish(parseScoreOutput(out, list));
+    });
+    child.stdin.write(JSON.stringify(list));
+    child.stdin.end();
+  });
 }
 
 export function scoreWithFriendModel(samples) {
@@ -36,26 +108,15 @@ export function scoreWithFriendModel(samples) {
     run = spawnSync(bin, [path.join(ML_DIR, "score.py")], {
       input: JSON.stringify(list),
       encoding: "utf8",
-      timeout: 20000,
+      timeout: 25000,
       windowsHide: true,
+      env: { ...process.env, PYTHONWARNINGS: "ignore" },
     });
   } catch (e) {
     console.warn("[ml] python score threw:", e.message);
     return list.map(() => null);
   }
-  if (run.status !== 0) {
-    console.warn("[ml] python score failed:", (run.stderr || run.stdout || "").slice(0, 400));
-    return list.map(() => null);
-  }
-  try {
-    const text = String(run.stdout || "");
-    const start = text.search(/[\[{]/);
-    const parsed = JSON.parse(start >= 0 ? text.slice(start) : text);
-    return Array.isArray(parsed) ? parsed : [parsed];
-  } catch (e) {
-    console.warn("[ml] python score json:", e.message);
-    return list.map(() => null);
-  }
+  return parseScoreOutput(run.stdout, list);
 }
 
 function dayKey(ts) {
@@ -174,9 +235,14 @@ function scoreNumber(final) {
   return Math.round(n * 100) / 100;
 }
 
-export function runCustomModel(features) {
-  const rows = (features.fraud || []).slice(0, 80);
-  const scoredRaw = scoreWithFriendModel(rows);
+function scoreScale(final) {
+  const exact = scoreNumber(final);
+  if (exact == null) return { exact: null, ticks: null, bar: null };
+  const ticks = Math.round(Number(final) * 100);
+  return { exact, ticks, bar: Math.min(100, Math.max(0, ticks)) };
+}
+
+function packCustom(rows, scoredRaw) {
   const scored = [];
   const anomalies = [];
   for (let i = 0; i < rows.length; i++) {
@@ -184,7 +250,8 @@ export function runCustomModel(features) {
     const s = scoredRaw[i];
     const live = s && modelMarked(s.anomaly);
     const saved = !live && modelMarked(row.savedAnomaly);
-    const final = live ? scoreNumber(s.final_score ?? s.score) : saved ? scoreNumber(row.savedScore) : null;
+    const rawFinal = live ? (s.final_score ?? s.score) : saved ? row.savedScore : null;
+    const scale = scoreScale(rawFinal);
     const anomaly = live ? (Number(s.anomaly) === 1 ? 1 : 0) : saved ? (Number(row.savedAnomaly) === 1 ? 1 : 0) : null;
     const item = {
       id: row.id,
@@ -192,8 +259,9 @@ export function runCustomModel(features) {
       amount: row.signedAmount != null ? row.signedAmount : -row.amount,
       createdAt: row.createdAt,
       counterparty: row.counterparty,
-      score: final,
-      scoreExact: final,
+      score: scale.ticks,
+      scoreExact: scale.exact,
+      scoreBar: scale.bar,
       label: anomaly == null ? "" : anomaly ? "Фрод" : "Норма",
       engine: live ? (s.engine || "anti_fraud.joblib") : saved ? "anti_fraud.joblib" : "unavailable",
     };
@@ -201,12 +269,29 @@ export function runCustomModel(features) {
     if (anomaly === 1) anomalies.push(item);
   }
   return {
-    engine: scoredRaw.some((s) => s && modelMarked(s.anomaly)) ? "anti_fraud.joblib" : "unavailable",
+    engine: scoredRaw.some((s) => s && modelMarked(s.anomaly)) ? "anti_fraud.joblib" : "saved",
     notes: "Метку ставит только anomaly модели. Скор — final_score. Отдельных правил нет.",
     anomalies: anomalies.slice(0, 60),
     scored: scored.slice(0, 80),
     fraudFeatures: FRAUD_FEATURES,
   };
+}
+
+let customCache = { key: "", at: 0, value: null };
+let customFlight = null;
+
+export function runCustomModel(features) {
+  const rows = (features.fraud || []).slice(0, 80);
+  const key = rows.map((row) => `${row.id}:${row.savedScore}:${row.savedAnomaly}`).join("|");
+  const fresh = customCache.value && customCache.key === key && Date.now() - customCache.at < 20000;
+  if (!fresh && !customFlight) {
+    customFlight = scoreWithFriendModelAsync(rows).then((scoredRaw) => {
+      customCache = { key, at: Date.now(), value: packCustom(rows, scoredRaw) };
+    }).finally(() => {
+      customFlight = null;
+    });
+  }
+  return customCache.value && customCache.key === key ? customCache.value : packCustom(rows, rows.map(() => null));
 }
 
 export function buildReport(store, { horizonDays = 7 } = {}) {

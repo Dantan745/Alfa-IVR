@@ -5,7 +5,7 @@ import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { deliver, loadNotify, persistNotify, publicNotify, saveNotify } from "./notify.mjs";
-import { buildReport, extractFeatures, runCustomModel, scoreWithFriendModel } from "./ml/index.mjs";
+import { buildReport, extractFeatures, runCustomModel, scoreWithFriendModelAsync } from "./ml/index.mjs";
 import { buildFraudSample } from "./ml/features.mjs";
 import { formatRuPhone, isRuMobile, ruMobileDigits, samePhone } from "./phone.mjs";
 
@@ -249,6 +249,13 @@ function scoreNumber(final) {
   return Math.round(n * 100) / 100;
 }
 
+function scoreScale(final) {
+  const exact = scoreNumber(final);
+  if (exact == null) return { exact: null, ticks: null, bar: null };
+  const ticks = Math.round(Number(final) * 100);
+  return { exact, ticks, bar: Math.min(100, Math.max(0, ticks)) };
+}
+
 function liveModelMarks() {
   const scored = runCustomModel(extractFeatures(store)).scored || [];
   const map = new Map();
@@ -269,18 +276,18 @@ function decorateAdminTx(t, marks) {
 }
 
 function decorateTx(t) {
-  const score = scoreNumber(t.mlScore);
+  const scale = scoreScale(t.mlScore);
   const marked = modelMarked(t.mlAnomaly);
   const anomaly = marked && Number(t.mlAnomaly) === 1 ? 1 : marked ? 0 : null;
   return {
     ...t,
-    mlScore: score,
+    mlScore: scale.exact,
     mlAnomaly: anomaly,
     riskLabel: anomaly == null ? "" : anomaly ? "Фрод" : "Норма",
-    riskScoreExact: score,
+    riskScoreExact: scale.exact,
     riskExplain: [],
-    riskScore: null,
-    riskBar: null,
+    riskScore: scale.ticks,
+    riskBar: scale.bar,
     riskLevel: anomaly == null ? "" : anomaly ? "fraud" : "ok",
   };
 }
@@ -375,7 +382,7 @@ function rememberLoginOk(user, deviceId) {
   return { attempts, newDevice };
 }
 
-function scoreOutgoing(email, amount, payee, sess, type = "expense") {
+async function scoreOutgoing(email, amount, payee, sess, type = "expense") {
   const sample = buildFraudSample(store, {
     email,
     amount,
@@ -384,7 +391,7 @@ function scoreOutgoing(email, amount, payee, sess, type = "expense") {
     newDevice: sess?.newDevice || 0,
     type,
   });
-  const scored = scoreWithFriendModel([sample])[0];
+  const scored = (await scoreWithFriendModelAsync([sample]))[0];
   if (!scored || !modelMarked(scored.anomaly)) {
     console.warn("[ml] IsolationForest недоступен, операция без метки модели");
     return { sample, score: null, final_score: null, anomaly: null, engine: "unavailable" };
@@ -1185,7 +1192,7 @@ const server = http.createServer(async (req, res) => {
         try { assertNotFrozen(email); assertNotSelf(email, payee); assertLimits(email, amount); } catch (e) { return send(res, 400, { error: e.message }); }
         if (amount > wallet.balance) return send(res, 400, { error: "Недостаточно средств" });
         try { assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
-        const fraud = scoreOutgoing(email, amount, payee, sess, "expense");
+        const fraud = await scoreOutgoing(email, amount, payee, sess, "expense");
         if (modelBlocks(fraud)) {
           console.warn("[ml] transfer blocked", { email, anomaly: fraud.anomaly, final_score: fraud.final_score });
           return send(res, 400, { error: clientBlockedMsg() });
@@ -1227,7 +1234,7 @@ const server = http.createServer(async (req, res) => {
         const amount = Number(b.amount);
         try { assertNotFrozen(email); } catch (e) { return send(res, 400, { error: e.message }); }
         if (!(amount > 0)) return send(res, 400, { error: "Укажите сумму" });
-        const fraud = scoreOutgoing(email, amount, "Альфа-Банк", sess, "income");
+        const fraud = await scoreOutgoing(email, amount, "Альфа-Банк", sess, "income");
         if (modelBlocks(fraud)) {
           console.warn("[ml] topup blocked", { email, anomaly: fraud.anomaly, final_score: fraud.final_score });
           return send(res, 400, { error: clientBlockedMsg() });
@@ -1256,7 +1263,7 @@ const server = http.createServer(async (req, res) => {
         try { assertNotFrozen(email); assertLimits(email, amount); } catch (e) { return send(res, 400, { error: e.message }); }
         if (amount > wallet.balance) return send(res, 400, { error: "Недостаточно средств" });
         try { assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
-        const fraud = scoreOutgoing(email, amount, "QR-касса", sess, "expense");
+        const fraud = await scoreOutgoing(email, amount, "QR-касса", sess, "expense");
         if (modelBlocks(fraud)) {
           console.warn("[ml] qr blocked", { email, anomaly: fraud.anomaly, final_score: fraud.final_score });
           return send(res, 400, { error: clientBlockedMsg() });
@@ -1292,7 +1299,7 @@ const server = http.createServer(async (req, res) => {
             fail += 1;
             continue;
           }
-          const fraud = scoreOutgoing(email, amount, phone || name, sess, "expense");
+          const fraud = await scoreOutgoing(email, amount, phone || name, sess, "expense");
           if (modelBlocks(fraud)) {
             fail += 1;
             continue;
