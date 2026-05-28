@@ -74,16 +74,26 @@ async function adminReq<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-function FraudMark({ label, score }: { label?: string; score?: number | null }) {
+function FraudMark({ label, score, ticks, bar }: { label?: string; score?: number | null; ticks?: number | null; bar?: number | null }) {
   if (label !== "Фрод" && label !== "Норма") {
     return <span className="text-[rgba(185,202,203,0.45)]">нет оценки</span>;
   }
   const fraud = label === "Фрод";
-  const shown = score != null && Number.isFinite(score) ? score : null;
+  const exact = score != null && Number.isFinite(score) ? score : ticks != null ? Math.round(ticks) / 100 : null;
+  const shownTicks = ticks != null && Number.isFinite(ticks) ? ticks : exact != null ? Math.round(exact * 100) : null;
+  const fill = bar != null && Number.isFinite(bar) ? bar : shownTicks != null ? Math.min(100, Math.max(0, shownTicks)) : 0;
   return (
-    <span className="inline-flex items-center gap-2 align-middle">
+    <span className="inline-flex items-center gap-2 align-middle flex-wrap">
       <span style={{ color: fraud ? "#FFB4AB" : "#48FFD5" }}>{label}</span>
-      {shown != null ? <span className="text-[rgba(185,202,203,0.7)]">{shown}</span> : null}
+      {exact != null ? <span className="text-[rgba(185,202,203,0.7)]">{exact}</span> : null}
+      {shownTicks != null ? (
+        <>
+          <span className="inline-block w-[72px] h-[6px] rounded-full bg-white/10 overflow-hidden shrink-0">
+            <span className="block h-full rounded-full" style={{ width: `${fill}%`, background: "linear-gradient(90deg,#00D2D3,#E8C07A)" }} />
+          </span>
+          <span className="text-[rgba(185,202,203,0.55)]">{shownTicks > 100 ? String(shownTicks) : `${shownTicks}/100`}</span>
+        </>
+      ) : null}
     </span>
   );
 }
@@ -508,7 +518,7 @@ export default function AdminPage() {
                     <div className="max-h-48 overflow-y-auto">
                       {detail.txs.map((t) => (
                         <div key={t.id} className="py-1.5 border-b border-white/5">
-                          <p>{new Date(t.createdAt).toLocaleString("ru-RU")} · {t.name} · {money(t.amount)} · <FraudMark label={t.riskLabel} score={t.riskScoreExact} /> {t.status === "held" ? <span className="text-[#FFB4AB]">ЗАМОРОЖЕНА</span> : t.status === "rejected" ? <span className="text-[#FFB4AB]">ОТКЛОНЕНА</span> : null}</p>
+                          <p>{new Date(t.createdAt).toLocaleString("ru-RU")} · {t.name} · {money(t.amount)} · <FraudMark label={t.riskLabel} score={t.riskScoreExact} ticks={t.riskScore} bar={t.riskBar} /> {t.status === "held" ? <span className="text-[#FFB4AB]">ЗАМОРОЖЕНА</span> : t.status === "rejected" ? <span className="text-[#FFB4AB]">ОТКЛОНЕНА</span> : null}</p>
                           <div className="flex flex-wrap gap-1 mt-1">
                             {t.status === "held" ? (
                               <>
@@ -558,7 +568,7 @@ export default function AdminPage() {
                     {t.status === "held" ? <span className="text-[#FFB4AB]"> · ЗАМОРОЖЕНА</span> : null}
                     {t.status === "rejected" ? <span className="text-[#FFB4AB]"> · ОТКЛОНЕНА</span> : null}
                     {" · "}
-                    <FraudMark label={t.riskLabel} score={t.riskScoreExact} />
+                    <FraudMark label={t.riskLabel} score={t.riskScoreExact} ticks={t.riskScore} bar={t.riskBar} />
                   </p>
                   <div className="flex flex-wrap gap-1 mt-1">
                     {t.status === "held" ? (
@@ -583,7 +593,7 @@ export default function AdminPage() {
             <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
               <p className="text-[16px] font-medium">Как считается оценка</p>
               <p className="text-[13px] text-[rgba(185,202,203,0.7)] mt-2 leading-relaxed">
-                Рядом с операцией два поля модели и ничего больше. <b className="text-[#FFB4AB]">Фрод / Норма</b> — только <b>anomaly</b>. Число — <b>final_score</b>, округлённый до сотых, это не вероятность и не уровень «из 100». Если модель не ответила, пишется «нет оценки», платёж из-за этого сам не помечается фродом. Клиенту ни метка, ни число не отдаются.
+                Рядом с операцией два поля модели. <b className="text-[#FFB4AB]">Фрод / Норма</b> берётся только из <b>anomaly</b>: ниже порога 0.71 — Норма, от 0.71 — Фрод и платёж отклоняется. Число — <b>round(final_score × 100) / 100</b>, это не вероятность. Шкала — <b>min(100, round(final_score × 100))</b>; если скор выше 1, число на экране больше 100, полоска упирается в 100. 66/100 ещё может быть Норма, 71/100 — уже Фрод, если так сказала метка. Клиенту ни метка, ни число не отдаются.
               </p>
               <p className="text-[12px] text-[#00D2D3] mt-2">{mlMsg}</p>
 
@@ -651,7 +661,7 @@ export default function AdminPage() {
                       <p>
                         <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
                         {" · "}
-                        <FraudMark label={a.label} score={a.scoreExact ?? a.score} />
+                        <FraudMark label={a.label} score={a.scoreExact} ticks={a.score} bar={a.scoreBar} />
                         {" · "}
                         {a.email} · {money(a.amount)}
                         {a.counterparty ? ` · ${a.counterparty}` : ""}
@@ -668,7 +678,7 @@ export default function AdminPage() {
                       <p>
                         <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
                         {" · "}
-                        <FraudMark label={a.label} score={a.scoreExact ?? a.score} />
+                        <FraudMark label={a.label} score={a.scoreExact} ticks={a.score} bar={a.scoreBar} />
                         {" · "}
                         {a.email} · {money(a.amount)}
                       </p>
