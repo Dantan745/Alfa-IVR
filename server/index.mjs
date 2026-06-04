@@ -1259,26 +1259,45 @@ const server = http.createServer(async (req, res) => {
         const b = await readBody(req);
         const amount = Number(b.amount);
         const wallet = store.wallets[email];
+        const merchant = String(b.merchant || "QR-касса").trim().slice(0, 80) || "QR-касса";
+        const payee = String(b.payee || "").trim();
         if (!(amount > 0)) return send(res, 400, { error: "Укажите сумму" });
         try { assertNotFrozen(email); assertLimits(email, amount); } catch (e) { return send(res, 400, { error: e.message }); }
+        if (payee && isSelfPayee(email, payee)) return send(res, 400, { error: "Нельзя оплатить свой QR" });
         if (amount > wallet.balance) return send(res, 400, { error: "Недостаточно средств" });
         try { assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
-        const fraud = await scoreOutgoing(email, amount, "QR-касса", sess, "expense");
+        const other = payee ? findPayee(payee, email) : null;
+        const fraud = await scoreOutgoing(email, amount, other ? (other.phone || payee) : "QR-касса", sess, "expense");
         if (modelBlocks(fraud)) {
           console.warn("[ml] qr blocked", { email, anomaly: fraud.anomaly, final_score: fraud.final_score });
           return send(res, 400, { error: clientBlockedMsg() });
         }
+        const title = other ? `${other.lastName} ${other.firstName}`.trim() : merchant;
         const qrTx = addTx(email, {
-          name: "Оплата QR",
+          name: title,
           amount: -amount,
           type: "expense",
           icon: "qr_code",
-          category: "Прочее",
-          comment: "QR",
-          counterparty: "QR-касса",
+          category: other ? "Переводы" : "Прочее",
+          comment: "Оплата QR",
+          counterparty: other ? (other.phone || other.walletId) : merchant,
           ...mlPatch(fraud),
         });
-        addNote(email, "Списание", `QR: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: qrTx.id });
+        addNote(email, "Списание", `QR · ${title}: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: qrTx.id });
+        if (other) {
+          const inTx = addTx(other.email, {
+            name: `${store.users[email].lastName} ${store.users[email].firstName}`.trim(),
+            amount,
+            type: "income",
+            icon: "qr_code",
+            category: "Переводы",
+            comment: "Оплата QR",
+            counterparty: store.users[email].phone || email,
+            linkedTxId: qrTx.id,
+          });
+          qrTx.linkedTxId = inTx.id;
+          addNote(other.email, "Перевод получен", `${store.users[email].firstName} оплатил ${amount.toLocaleString("ru-RU")} ₽ по QR`, "transfer", { txId: inTx.id });
+        }
         saveDb(store);
         send(res, 200, snapshot(email));
         return;
