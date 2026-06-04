@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type HTMLAttributes } from "react";
 import imgAlfaLogo from "../imports/AndroidCompact2/c4c0fd50168f399240c6e8e131c479f4e660676b.png";
 import imgGosuslugi from "../imports/AndroidCompact2/8eaf95343e7f57475685bf10f06a3d8ffb2b9f2f.png";
 import { useWallet } from "../wallet";
+import { readPayLink } from "../qr";
 import OtpPanel, { type OtpChannel } from "../components/OtpPanel";
 import {
   maskDate,
@@ -343,6 +344,11 @@ export default function AuthPage() {
   return (
     <div className="flex-1 min-h-0 bg-[#121212] flex flex-col relative overflow-hidden page-enter">
       <GlowLogo />
+      {readPayLink() && (
+        <p className="mx-4 mb-2 rounded-[16px] bg-[#191C1C] px-4 py-3 text-center text-[14px] text-[#E0E0E0]">
+          Войдите, чтобы оплатить {readPayLink()?.title}
+        </p>
+      )}
       <div className="flex-1 overflow-y-auto pb-8">
         {step === "login" && (
           <div className="px-4 sm:px-6 max-w-[440px] mx-auto w-full">

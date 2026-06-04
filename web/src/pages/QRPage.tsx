@@ -7,6 +7,7 @@ import { useWallet } from "../wallet";
 
 interface QRPageProps {
   onBack: () => void;
+  incoming?: QrBill | null;
 }
 
 type Detector = { detect: (source: CanvasImageSource) => Promise<{ rawValue?: string }[]> };
@@ -38,7 +39,7 @@ async function readFile(file: File) {
   return jsQR(img.data, img.width, img.height)?.data || "";
 }
 
-export default function QRPage({ onBack }: QRPageProps) {
+export default function QRPage({ onBack, incoming = null }: QRPageProps) {
   const { qrPay, requestCode, user } = useWallet();
   const [tab, setTab] = useState<"generate" | "scan">("scan");
   const [amount, setAmount] = useState("");
@@ -65,6 +66,17 @@ export default function QRPage({ onBack }: QRPageProps) {
   const walletId = user?.walletId || "";
   const sum = Number(String(amount).replace(",", "."));
   const payload = encodeAlfaQr({ walletId, title, amount: sum > 0 ? sum : undefined });
+
+  useEffect(() => {
+    if (!incoming) return;
+    if (incoming.payee && walletId && incoming.payee.toLowerCase() === walletId.toLowerCase()) {
+      setCamError("Это ваш QR");
+      setBill(null);
+      return;
+    }
+    setBill(incoming);
+    setPayAmount(incoming.amount != null ? String(incoming.amount) : "");
+  }, [incoming, walletId]);
 
   useEffect(() => {
     let stop = false;
@@ -183,7 +195,7 @@ export default function QRPage({ onBack }: QRPageProps) {
   async function share() {
     try {
       if (navigator.share) {
-        await navigator.share({ title: "Мой QR", text: payload });
+        await navigator.share({ title: "Оплата в Альфа Кошельке", url: payload });
         return;
       }
     } catch {
@@ -191,7 +203,7 @@ export default function QRPage({ onBack }: QRPageProps) {
     }
     try {
       await navigator.clipboard.writeText(payload);
-      setCopied("Код скопирован");
+      setCopied("Ссылка скопирована");
     } catch {
       setCopied(payload);
     }
@@ -222,6 +234,7 @@ export default function QRPage({ onBack }: QRPageProps) {
     setDone(`Оплачено ${value.toLocaleString("ru-RU")} ₽`);
     setBill(null);
     seen.current = "";
+    if (incoming) onBack();
   }
 
   const payValue = Number(String(payAmount).replace(",", "."));
@@ -289,6 +302,7 @@ export default function QRPage({ onBack }: QRPageProps) {
           <p className="text-[16px] text-[#E0E0E0]">{title}</p>
           <p className="mt-1 text-[13px] text-[rgba(185,202,203,0.6)]">{user?.phone || walletId}</p>
           <p className="mt-1 text-[12px] text-[rgba(185,202,203,0.4)]">{walletId}</p>
+          <p className="mt-3 text-center text-[13px] text-[rgba(185,202,203,0.55)]">Камера телефона откроет оплату в Альфа Кошельке</p>
           <div className="mt-4 w-full">
             <p className="mb-2 text-[12px] uppercase tracking-[1px] text-[rgba(185,202,203,0.7)]">Сумма в QR, необязательно</p>
             <input
@@ -331,7 +345,7 @@ export default function QRPage({ onBack }: QRPageProps) {
             >
               {payValue > 0 ? `Оплатить ${payValue.toLocaleString("ru-RU")} ₽` : "Оплатить"}
             </button>
-            <button type="button" className="mt-2 w-full py-2 text-[14px] text-[rgba(185,202,203,0.7)]" onClick={() => { setBill(null); seen.current = ""; }}>
+            <button type="button" className="mt-2 w-full py-2 text-[14px] text-[rgba(185,202,203,0.7)]" onClick={() => { setBill(null); seen.current = ""; if (incoming) onBack(); }}>
               Отмена
             </button>
           </div>

@@ -4,10 +4,35 @@ export type QrBill = {
   amount: number | null;
 };
 
+function payOrigin() {
+  if (typeof location !== "undefined" && /^https?:$/.test(location.protocol)) return location.origin;
+  return "https://alfa-koshelek-cr.fly.dev";
+}
+
 export function encodeAlfaQr(opts: { walletId: string; title: string; amount?: number }) {
   const amount = opts.amount && opts.amount > 0 ? String(Math.round(opts.amount * 100) / 100) : "";
-  const title = opts.title.replace(/[|\n\r]/g, " ").slice(0, 80);
-  return `ALFACR1|${opts.walletId}|${amount}|${title}`;
+  const title = opts.title.replace(/[\n\r]/g, " ").slice(0, 80);
+  const url = new URL("/pay", payOrigin());
+  url.searchParams.set("to", opts.walletId);
+  if (amount) url.searchParams.set("sum", amount);
+  url.searchParams.set("name", title || "Кошелёк ЦР");
+  return url.toString();
+}
+
+export function readPayLink(href?: string): QrBill | null {
+  const raw = href || (typeof location !== "undefined" ? location.href : "");
+  try {
+    const url = new URL(raw);
+    if (url.pathname.replace(/\/+$/, "") !== "/pay") return null;
+    return parseQr(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function clearPayLink() {
+  if (typeof history === "undefined" || typeof location === "undefined") return;
+  if (location.pathname.replace(/\/+$/, "") === "/pay") history.replaceState(null, "", "/");
 }
 
 function money(raw: string) {
