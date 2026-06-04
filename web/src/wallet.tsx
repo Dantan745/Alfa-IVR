@@ -89,7 +89,7 @@ type WalletCtx = {
   logout: () => void;
   transfer: (payee: string, amount: number, comment?: string, code?: string) => Promise<string | null>;
   topUp: (amount: number) => Promise<string | null>;
-  qrPay: (amount: number, code?: string) => Promise<string | null>;
+  qrPay: (amount: number, extra?: { code?: string; merchant?: string; payee?: string }) => Promise<string | null>;
   copyWalletId: () => Promise<void>;
   markNotesRead: () => Promise<void>;
   markNoteRead: (id: string) => Promise<void>;
@@ -277,9 +277,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [apply, fail]);
 
-  const qrPay = useCallback(async (amount: number, code?: string) => {
+  const qrPay = useCallback(async (amount: number, extra?: { code?: string; merchant?: string; payee?: string }) => {
     try {
-      apply(await api.qrPay(amount, code), { quiet: true });
+      apply(await api.qrPay(amount, extra), { quiet: true });
       setToast("Оплата прошла");
       return null;
     } catch (e) {

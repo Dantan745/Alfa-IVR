@@ -71,7 +71,8 @@ export const api = {
   transfer: (payee: string, amount: number, comment?: string, code?: string) =>
     req<Snapshot>("/api/transfer", { method: "POST", body: JSON.stringify({ payee, amount, comment, code }) }),
   topUp: (amount: number) => req<Snapshot>("/api/topup", { method: "POST", body: JSON.stringify({ amount }) }),
-  qrPay: (amount: number, code?: string) => req<Snapshot>("/api/qr", { method: "POST", body: JSON.stringify({ amount, code }) }),
+  qrPay: (amount: number, extra?: { code?: string; merchant?: string; payee?: string }) =>
+    req<Snapshot>("/api/qr", { method: "POST", body: JSON.stringify({ amount, ...extra }) }),
   bulkPay: (rows: { name: string; phone: string; amount: number }[], code?: string) =>
     req<Snapshot & { ok: number; fail: number }>("/api/bulk", { method: "POST", body: JSON.stringify({ rows, code }) }),
   addContact: (name: string, phone: string) =>
