@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { clearPayLink, readPayLink, type QrBill } from "./qr";
 import AuthPage from "./pages/AuthPage";
 import HomePage from "./pages/HomePage";
 import PaymentsPage from "./pages/PaymentsPage";
@@ -39,6 +40,11 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("home");
   const [sub, setSub] = useState<SubPage>(null);
   const [txId, setTxId] = useState<string | null>(null);
+  const [payLink, setPayLink] = useState<QrBill | null>(() => readPayLink());
+
+  useEffect(() => {
+    if (authed && payLink) setSub("qr");
+  }, [authed, payLink]);
 
   function navigate(page: string, extra?: string) {
     const subs: SubPage[] = ["transfer", "qr", "limits", "address", "bulk", "smart", "topup", "tx", "notifications", "security", "support"];
@@ -59,6 +65,8 @@ export default function App() {
   function goBack() {
     setSub(null);
     setTxId(null);
+    setPayLink(null);
+    clearPayLink();
   }
 
   if (!ready) {
@@ -82,7 +90,7 @@ export default function App() {
   function renderSubPage() {
     switch (sub) {
       case "transfer": return <TransferPage onBack={goBack} onNavigate={navigate} />;
-      case "qr": return <QRPage onBack={goBack} />;
+      case "qr": return <QRPage onBack={goBack} incoming={payLink} />;
       case "limits": return <LimitsPage onBack={goBack} />;
       case "address": return <AddressBookPage onBack={goBack} onTransfer={() => navigate("transfer")} />;
       case "bulk": return <BulkPaymentsPage onBack={goBack} />;
