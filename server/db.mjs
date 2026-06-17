@@ -445,6 +445,21 @@ export async function lockWallet(email) {
   return mapWallet(r.rows[0], await savingsOf(email));
 }
 
+function money(value, fallback = 0) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  const rounded = Math.round(n * 100) / 100;
+  if (rounded > 999999999999.99) return 999999999999.99;
+  if (rounded < -999999999999.99) return -999999999999.99;
+  return rounded;
+}
+
+function percent(value, fallback) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(100, Math.max(0, n));
+}
+
 export async function insertWallet(wallet) {
   const limits = wallet.limits || {};
   await query(
@@ -453,13 +468,13 @@ export async function insertWallet(wallet) {
       limit_op, limit_day, limit_month, limit_abroad, alert_op, alert_day, alert_month, alert_abroad
     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
     [
-      wallet.email, wallet.balance || 0, Boolean(wallet.biometric), wallet.pin || "", Boolean(wallet.hideBalance),
-      limits.op ?? 30000, limits.day ?? 50000, limits.month ?? 100000, limits.abroad ?? 10000,
-      limits.alertOp ?? 90, limits.alertDay ?? 80, limits.alertMonth ?? 70, limits.alertAbroad ?? 100,
+      wallet.email, money(wallet.balance, 0), Boolean(wallet.biometric), String(wallet.pin || ""), Boolean(wallet.hideBalance),
+      money(limits.op, 30000), money(limits.day, 50000), money(limits.month, 100000), money(limits.abroad, 10000),
+      percent(limits.alertOp, 90), percent(limits.alertDay, 80), percent(limits.alertMonth, 70), percent(limits.alertAbroad, 100),
     ],
   );
   for (const box of wallet.savings || []) {
-    await query("INSERT INTO savings (id, email, name, amount) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING", [box.id, wallet.email, box.name, box.amount || 0]);
+    await query("INSERT INTO savings (id, email, name, amount) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING", [box.id, wallet.email, box.name, money(box.amount, 0)]);
   }
 }
 
@@ -472,9 +487,9 @@ export async function saveWallet(wallet) {
       alert_op = $10, alert_day = $11, alert_month = $12, alert_abroad = $13
      WHERE email = $1`,
     [
-      wallet.email, wallet.balance || 0, Boolean(wallet.biometric), wallet.pin || "", Boolean(wallet.hideBalance),
-      limits.op ?? 30000, limits.day ?? 50000, limits.month ?? 100000, limits.abroad ?? 10000,
-      limits.alertOp ?? 90, limits.alertDay ?? 80, limits.alertMonth ?? 70, limits.alertAbroad ?? 100,
+      wallet.email, money(wallet.balance, 0), Boolean(wallet.biometric), String(wallet.pin || ""), Boolean(wallet.hideBalance),
+      money(limits.op, 30000), money(limits.day, 50000), money(limits.month, 100000), money(limits.abroad, 10000),
+      percent(limits.alertOp, 90), percent(limits.alertDay, 80), percent(limits.alertMonth, 70), percent(limits.alertAbroad, 100),
     ],
   );
 }
@@ -508,8 +523,8 @@ export async function insertTx(tx) {
       hold_query, balance_after, created_at, freeze_reason, held_at, held_by, reviewed_at, reviewed_by
     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
     [
-      tx.id, tx.email, tx.linkedTxId || null, tx.amount, tx.type, tx.status || "done", tx.name || "", tx.icon || "",
-      tx.category || "", tx.comment || "", tx.counterparty || "", tx.holdQuery || "", tx.balanceAfter, tx.createdAt,
+      tx.id, tx.email, tx.linkedTxId || null, money(tx.amount, 0), tx.type, tx.status || "done", tx.name || "", tx.icon || "",
+      tx.category || "", tx.comment || "", tx.counterparty || "", tx.holdQuery || "", money(tx.balanceAfter, 0), tx.createdAt,
       tx.freezeReason || "", tx.heldAt || null, tx.heldBy || "", tx.reviewedAt || null, tx.reviewedBy || "",
     ],
   );
@@ -979,10 +994,16 @@ export async function initDb() {
   const count = await pool.query("SELECT count(*)::int AS n FROM app_user");
   if (count.rows[0].n === 0) {
     const raw = readJson(DATA_FILE);
-    await withTx(async () => {
-      if (raw && raw.users && Object.keys(raw.users).length) await importJson(raw);
-      await seedDemo();
-    });
+    try {
+      await withTx(async () => {
+        if (raw && raw.users && Object.keys(raw.users).length) await importJson(raw);
+        await seedDemo();
+      });
+    } catch (err) {
+      console.error("Перенос data.json не удался:", err.message);
+      const again = await pool.query("SELECT count(*)::int AS n FROM app_user");
+      if (again.rows[0].n === 0) await withTx(() => seedDemo());
+    }
   }
   const notify = await readNotify();
   if (!notify) {
