@@ -12,7 +12,7 @@ type UserRow = {
   createdAt: number;
   balance: number;
   txCount: number;
-  lastCode?: string;
+  codePending?: boolean;
   password?: string;
   frozen?: boolean;
   freezeReason?: string;
@@ -61,7 +61,6 @@ type MlReport = {
 
 const KEY = "alfa-admin-key";
 const NOTIFY_DRAFT = "alfa-admin-notify";
-const DEFAULT_SMSRU = "E5BC03E1-5193-FFFF-1F0D-CB0DAD2CD255";
 type Tab = "overview" | "users" | "ops" | "ml";
 
 async function adminReq<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -145,14 +144,19 @@ export default function AdminPage() {
   const [notify, setNotify] = useState(() => {
     try {
       const raw = localStorage.getItem(NOTIFY_DRAFT);
-      if (raw) return { ...JSON.parse(raw), smsruApiId: JSON.parse(raw).smsruApiId || DEFAULT_SMSRU };
+      if (raw) {
+        const saved = JSON.parse(raw);
+        delete saved.smsruApiId;
+        delete saved.smtpPass;
+        return { smsruApiId: "", smtpPass: "", ...saved };
+      }
     } catch {
       /* ignore */
     }
     return {
       sms: false,
       email: false,
-      smsruApiId: DEFAULT_SMSRU,
+      smsruApiId: "",
       smtpHost: "smtp.mail.ru",
       smtpPort: 465,
       smtpUser: "",
@@ -170,7 +174,7 @@ export default function AdminPage() {
     });
     const next = {
       ...d,
-      smsruApiId: d.smsruApiId || notify.smsruApiId || DEFAULT_SMSRU,
+      smsruApiId: notify.smsruApiId || "",
       smtpPass: notify.smtpPass,
     };
     setNotify(next);
@@ -190,7 +194,7 @@ export default function AdminPage() {
       const next = {
         ...p,
         ...n,
-        smsruApiId: n.smsruApiId || p.smsruApiId || DEFAULT_SMSRU,
+        smsruApiId: p.smsruApiId || "",
         smtpPass: p.smtpPass,
       };
       try {
@@ -475,7 +479,7 @@ export default function AdminPage() {
                     <p>Пароль: <span className="text-[#00D2D3]">хеш scrypt, открытый текст не хранится</span></p>
                     <p>Создан: {new Date(detail.user.createdAt).toLocaleString("ru-RU")}</p>
                     {detail.user.frozen && <p className="text-[#FFB4AB]">Заморожен: {detail.user.freezeReason || "да"}</p>}
-                    {detail.user.lastCode && <p className="text-[#00D2D3]">Последний код: {detail.user.lastCode}</p>}
+                    {detail.user.codePending && <p className="text-[rgba(185,202,203,0.7)]">Код подтверждения отправлен и ещё действует. Сам код на экране не показывается.</p>}
                     <label>Почта<input className="w-full mt-1 bg-black/30 rounded-[10px] px-3 py-2" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} /></label>
                     <label>Телефон<input className="w-full mt-1 bg-black/30 rounded-[10px] px-3 py-2" value={editPhone} onChange={(e) => setEditPhone(editPhoneMask(editPhone, e.target.value))} /></label>
                     <label className="block">

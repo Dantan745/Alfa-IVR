@@ -26,7 +26,11 @@ function loadDotEnv() {
 
 loadDotEnv();
 
-const DEFAULT_SMSRU = "E5BC03E1-5193-FFFF-1F0D-CB0DAD2CD255";
+function secretOrKeep(next, prev) {
+  const s = next == null ? "" : String(next).trim();
+  if (!s || s.includes("…") || s.includes("*")) return prev || "";
+  return s;
+}
 
 function keep(val, fallback) {
   const s = val == null ? "" : String(val).trim();
@@ -37,7 +41,7 @@ let cache = null;
 
 function fromEnv(file = {}) {
   return {
-    smsruApiId: keep(file.smsruApiId, process.env.SMSRU_API_ID) || DEFAULT_SMSRU,
+    smsruApiId: keep(file.smsruApiId, process.env.SMSRU_API_ID),
     smsFrom: keep(file.smsFrom, process.env.SMSRU_FROM),
     smtpHost: keep(file.smtpHost, process.env.SMTP_HOST) || "smtp.mail.ru",
     smtpPort: Number(file.smtpPort || process.env.SMTP_PORT || 465),
@@ -66,7 +70,7 @@ export async function hydrateNotify() {
 export async function saveNotify(patch) {
   const cur = loadNotify();
   const next = {
-    smsruApiId: keep(patch.smsruApiId, cur.smsruApiId) || DEFAULT_SMSRU,
+    smsruApiId: secretOrKeep(patch.smsruApiId, cur.smsruApiId),
     smsFrom: keep(patch.smsFrom, cur.smsFrom),
     smtpHost: keep(patch.smtpHost, cur.smtpHost) || "smtp.mail.ru",
     smtpPort: Number(patch.smtpPort != null ? patch.smtpPort : cur.smtpPort) || 465,
@@ -83,7 +87,7 @@ export function publicNotify(cfg = loadNotify()) {
   return {
     sms: Boolean(cfg.smsruApiId),
     email: Boolean(cfg.smtpUser && cfg.smtpPass),
-    smsruApiId: cfg.smsruApiId || "",
+    smsruApiId: "",
     smsFrom: cfg.smsFrom || "",
     smtpHost: cfg.smtpHost,
     smtpPort: cfg.smtpPort,
