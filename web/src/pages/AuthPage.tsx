@@ -156,8 +156,6 @@ export default function AuthPage() {
         const d = JSON.parse(raw) as Partial<AuthDraft>;
         if (d.step) setStep(d.step);
         if (d.email != null) setEmail(d.email);
-        if (d.password != null) setPassword(d.password);
-        if (d.code != null) setCode(d.code);
         if (d.showCode) setShowCode(true);
         if (d.showRegCode) setShowRegCode(true);
         if (d.channel === "email" || d.channel === "sms") setChannel(d.channel);
@@ -165,16 +163,12 @@ export default function AuthPage() {
         if (d.lastName != null) setLastName(d.lastName);
         if (d.firstName != null) setFirstName(d.firstName);
         if (d.middleName != null) setMiddleName(d.middleName);
-        if (d.passport != null) setPassport(d.passport);
         if (d.issueDate != null) setIssueDate(d.issueDate);
         if (d.divCode != null) setDivCode(d.divCode);
         if (d.regPhone != null) setRegPhone(d.regPhone);
         if (d.regEmail != null) setRegEmail(d.regEmail);
-        if (d.regPassword != null) setRegPassword(d.regPassword);
         if (d.agreed) setAgreed(true);
         if (d.resetMode) setResetMode(true);
-        if (d.newPassword != null) setNewPassword(d.newPassword);
-        if (d.newPassword2 != null) setNewPassword2(d.newPassword2);
       }
     } catch {
       /* ignore broken draft */
@@ -190,9 +184,9 @@ export default function AuthPage() {
       return;
     }
     const draft: AuthDraft = {
-      step, email, password, code, showCode, showRegCode, channel, codeHint,
-      lastName, firstName, middleName, passport, issueDate, divCode,
-      regPhone, regEmail, regPassword, agreed, resetMode, newPassword, newPassword2,
+      step, email, password: "", code: "", showCode, showRegCode, channel, codeHint,
+      lastName, firstName, middleName, passport: "", issueDate, divCode,
+      regPhone, regEmail, regPassword: "", agreed, resetMode, newPassword: "", newPassword2: "",
     };
     try {
       localStorage.setItem(AUTH_DRAFT, JSON.stringify(draft));

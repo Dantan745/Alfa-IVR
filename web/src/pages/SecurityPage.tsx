@@ -4,7 +4,7 @@ import { validatePin } from "../validate";
 
 export default function SecurityPage({ onBack }: { onBack: () => void }) {
   const { wallet, user, updateSecurity } = useWallet();
-  const [pin, setPin] = useState(wallet?.pin || "");
+  const [pin, setPin] = useState("");
   const [err, setErr] = useState("");
 
   return (
@@ -36,7 +36,7 @@ export default function SecurityPage({ onBack }: { onBack: () => void }) {
         />
         <div className="rounded-[20px] px-4 py-4 mb-3" style={{ background: "#191C1C" }}>
           <p className="text-[#E0E0E0] text-[15px] font-medium mb-1">PIN-код</p>
-          <p className="text-[rgba(185,202,203,0.5)] text-[12px] mb-3">4 цифры для разблокировки приложения</p>
+          <p className="text-[rgba(185,202,203,0.5)] text-[12px] mb-3">{wallet?.pinSet ? "PIN уже задан. Новый код заменит его, старый на экран не выводится." : "4 цифры для разблокировки приложения. На сервере хранится только хеш."}</p>
           <input
             value={pin}
             onChange={(e) => { setPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setErr(""); }}
