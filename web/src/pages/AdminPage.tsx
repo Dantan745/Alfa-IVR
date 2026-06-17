@@ -228,7 +228,7 @@ export default function AdminPage() {
       setEditBal(String(d.wallet.balance));
       setEditPhone(d.user.phone);
       setEditEmail(d.user.email);
-      setEditPass(d.user.password || "");
+      setEditPass("");
     });
   }, [sel]);
 
@@ -458,7 +458,7 @@ export default function AdminPage() {
                   <button key={u.email} type="button" onClick={() => setSel(u.email)} className="w-full text-left px-4 py-3 border-b border-white/5" style={{ background: sel === u.email ? "rgba(0,210,211,0.08)" : "transparent" }}>
                     <p className="text-[14px] font-medium">{u.lastName} {u.firstName} {u.middleName} {u.frozen ? <span className="text-[#FFB4AB] text-[11px]">ЗАМОРОЖЕН</span> : null}</p>
                     <p className="text-[12px] text-[rgba(185,202,203,0.55)]">{u.email} · {u.phone}</p>
-                    <p className="text-[12px] text-[#E0E0E0] mt-0.5">пароль: {u.password || "ещё не сохранён"}</p>
+                    <p className="text-[12px] text-[rgba(185,202,203,0.55)] mt-0.5">пароль хранится как хеш</p>
                     <p className="text-[12px] text-[#00D2D3] mt-0.5">{u.balance.toLocaleString("ru-RU")} ₽ · операций {u.txCount}</p>
                   </button>
                 ))}
@@ -472,11 +472,10 @@ export default function AdminPage() {
                     <p className="text-[16px] font-medium">{detail.user.lastName} {detail.user.firstName}</p>
                     <p>ID: {detail.user.walletId}</p>
                     <p>Паспорт: {detail.user.passport || "—"}</p>
-                    <p>Пароль: <span className="text-[#00D2D3]">{detail.user.password || "ещё не сохранён — задайте в поле ниже"}</span></p>
+                    <p>Пароль: <span className="text-[#00D2D3]">хеш scrypt, открытый текст не хранится</span></p>
                     <p>Создан: {new Date(detail.user.createdAt).toLocaleString("ru-RU")}</p>
                     {detail.user.frozen && <p className="text-[#FFB4AB]">Заморожен: {detail.user.freezeReason || "да"}</p>}
                     {detail.user.lastCode && <p className="text-[#00D2D3]">Последний код: {detail.user.lastCode}</p>}
-                    {!detail.user.password && <p className="text-[#FFB4AB]">Пароль в базе ещё не записан открытым текстом. Сохраните новый в поле «Пароль клиента».</p>}
                     <label>Почта<input className="w-full mt-1 bg-black/30 rounded-[10px] px-3 py-2" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} /></label>
                     <label>Телефон<input className="w-full mt-1 bg-black/30 rounded-[10px] px-3 py-2" value={editPhone} onChange={(e) => setEditPhone(editPhoneMask(editPhone, e.target.value))} /></label>
                     <label className="block">
@@ -485,7 +484,7 @@ export default function AdminPage() {
                         className="w-full mt-1 bg-black/30 rounded-[10px] px-3 py-2 text-[#00D2D3]"
                         value={editPass}
                         onChange={(e) => setEditPass(e.target.value)}
-                        placeholder={editPass ? "" : "неизвестен — задайте новый или дождитесь входа клиента"}
+                        placeholder="новый пароль, от 8 символов"
                         autoComplete="off"
                       />
                     </label>
