@@ -72,7 +72,16 @@ function startOfMonth(ts = Date.now()) {
 
 async function limitsOf(email) {
   const wallet = await db.getWallet(email);
-  return { ...defaultLimits(), ...(wallet?.limits || {}) };
+  const cap = defaultLimits();
+  const raw = { ...cap, ...(wallet?.limits || {}) };
+  const within = (value, max) => Math.min(max, Math.max(1, Number(value) || max));
+  return {
+    ...raw,
+    op: within(raw.op, cap.op),
+    day: within(raw.day, cap.day),
+    month: within(raw.month, cap.month),
+    abroad: within(raw.abroad, cap.abroad),
+  };
 }
 
 async function usageOf(email) {
@@ -297,7 +306,11 @@ async function issueSession(email, extra = {}) {
 async function sessionOf(req) {
   const h = req.headers.authorization || "";
   const token = h.startsWith("Bearer ") ? h.slice(7) : "";
-  return db.getSession(token);
+  const session = await db.getSession(token);
+  if (!session?.deviceId) return session;
+  const presented = String(req.headers["x-device-id"] || "").trim().slice(0, 64);
+  if (!presented || presented !== session.deviceId) return null;
+  return session;
 }
 
 async function authEmail(req) {
@@ -457,7 +470,9 @@ async function holdTx(tx, reason, extra = {}) {
 
 async function creditPayeeFromHeld(tx) {
   const query = tx.holdQuery || tx.counterparty || tx.name;
-  const other = await findPayee(query, tx.email);
+  const found = await db.resolvePayee(query, tx.email);
+  if (found.ambiguous) throw new Error("Найдено несколько клиентов с таким именем. Укажите телефон или номер кошелька.");
+  const other = found.user;
   if (!other) return null;
   const abs = Math.abs(tx.amount);
   const sender = await db.getUser(tx.email);
@@ -479,49 +494,53 @@ async function creditPayeeFromHeld(tx) {
 
 async function releaseHeldTx(tx, by = "admin") {
   if (!tx || tx.status !== "held") throw new Error("Операция не заморожена");
-  if (tx.amount < 0 && !tx.linkedTxId) await creditPayeeFromHeld(tx);
-  tx.status = "done";
-  tx.freezeReason = "";
-  tx.reviewedAt = Date.now();
-  tx.reviewedBy = by;
-  await db.saveTx(tx);
-  await addNote(tx.email, "Операция выполнена", `${tx.name}: ${Math.abs(tx.amount).toLocaleString("ru-RU")} ₽`, "transfer", { txId: tx.id });
-  await audit("tx.release", { email: tx.email, txId: tx.id, by });
+  await locked(async () => {
+    if (tx.amount < 0 && !tx.linkedTxId) await creditPayeeFromHeld(tx);
+    tx.status = "done";
+    tx.freezeReason = "";
+    tx.reviewedAt = Date.now();
+    tx.reviewedBy = by;
+    await db.saveTx(tx);
+    await addNote(tx.email, "Операция выполнена", `${tx.name}: ${Math.abs(tx.amount).toLocaleString("ru-RU")} ₽`, "transfer", { txId: tx.id });
+    await audit("tx.release", { email: tx.email, txId: tx.id, by });
+  });
 }
 
 async function rejectHeldTx(tx, by = "admin") {
   if (!tx || tx.status !== "held") throw new Error("Операция не заморожена");
-  const abs = Math.abs(tx.amount);
-  if (tx.amount < 0) {
-    await addTx(tx.email, {
-      name: "Возврат заморозки",
-      amount: abs,
-      type: "income",
-      icon: "undo",
-      category: "Служебное",
-      comment: `Возврат ${tx.id}`,
-      counterparty: "Антифрод",
-      linkedTxId: tx.id,
-    });
-  } else {
-    await addTx(tx.email, {
-      name: "Отмена заморозки",
-      amount: -abs,
-      type: "expense",
-      icon: "block",
-      category: "Служебное",
-      comment: `Отмена ${tx.id}`,
-      counterparty: "Антифрод",
-      linkedTxId: tx.id,
-    });
-  }
-  tx.status = "rejected";
-  tx.freezeReason = "Отклонено администратором как мошенничество";
-  tx.reviewedAt = Date.now();
-  tx.reviewedBy = by;
-  await db.saveTx(tx);
-  await addNote(tx.email, "Операция отменена", `${tx.name}: ${abs.toLocaleString("ru-RU")} ₽ возвращены`, "transfer", { txId: tx.id });
-  await audit("tx.reject", { email: tx.email, txId: tx.id, by });
+  await locked(async () => {
+    const abs = Math.abs(tx.amount);
+    if (tx.amount < 0) {
+      await addTx(tx.email, {
+        name: "Возврат заморозки",
+        amount: abs,
+        type: "income",
+        icon: "undo",
+        category: "Служебное",
+        comment: `Возврат ${tx.id}`,
+        counterparty: "Антифрод",
+        linkedTxId: tx.id,
+      });
+    } else {
+      await addTx(tx.email, {
+        name: "Отмена заморозки",
+        amount: -abs,
+        type: "expense",
+        icon: "block",
+        category: "Служебное",
+        comment: `Отмена ${tx.id}`,
+        counterparty: "Антифрод",
+        linkedTxId: tx.id,
+      });
+    }
+    tx.status = "rejected";
+    tx.freezeReason = "Отклонено администратором как мошенничество";
+    tx.reviewedAt = Date.now();
+    tx.reviewedBy = by;
+    await db.saveTx(tx);
+    await addNote(tx.email, "Операция отменена", `${tx.name}: ${abs.toLocaleString("ru-RU")} ₽ возвращены`, "transfer", { txId: tx.id });
+    await audit("tx.reject", { email: tx.email, txId: tx.id, by });
+  });
 }
 
 function audit(action, detail) {
@@ -536,8 +555,20 @@ async function putCode(purpose, email, channel, dest) {
     throw new Error(`Подождите ${wait} с перед повторной отправкой`);
   }
   const rec = { code, exp: Date.now() + CODE_TTL, channel, dest, sentAt: Date.now(), purpose };
-  await db.saveCode(purpose, email, rec);
+  await db.saveCode(purpose, email, { ...rec, code: codeHash(code) });
   return rec;
+}
+
+function codeHash(code) {
+  return crypto.createHash("sha256").update(String(code)).digest("hex");
+}
+
+function safeCodeEqual(stored, got) {
+  const expect = /^[a-f0-9]{64}$/i.test(stored) ? codeHash(got) : String(got);
+  const left = Buffer.from(String(stored).toLowerCase());
+  const right = Buffer.from(expect.toLowerCase());
+  if (left.length !== right.length) return false;
+  return crypto.timingSafeEqual(left, right);
 }
 
 const otpFails = new Map();
@@ -546,7 +577,7 @@ async function takeCode(purpose, email, code) {
   const got = String(code || "").trim();
   const key = `${purpose}:${email}`;
   if (!rec || rec.exp < Date.now()) return false;
-  if ((!PRODUCTION && rec.bypass) || rec.code === got) {
+  if ((!PRODUCTION && rec.bypass) || safeCodeEqual(rec.code, got)) {
     otpFails.delete(key);
     await db.deleteCode(purpose, email);
     return true;
@@ -589,22 +620,24 @@ function addNote(email, title, body, kind = "transfer", extra = {}) {
 }
 
 async function addTx(email, partial) {
-  const wallet = await db.lockWallet(email);
-  const nextBal = Math.round((Number(wallet.balance) + Number(partial.amount)) * 100) / 100;
-  if (partial.amount < 0 && nextBal < -0.001) throw new Error("Недостаточно средств");
-  wallet.balance = nextBal;
-  await db.saveWallet(wallet);
-  const row = {
-    id: uid("t-"),
-    email,
-    createdAt: Date.now(),
-    status: "done",
-    balanceAfter: nextBal,
-    comment: "",
-    ...partial,
-  };
-  await db.insertTx(row);
-  return row;
+  return locked(async () => {
+    const wallet = await db.lockWallet(email);
+    const nextBal = Math.round((Number(wallet.balance) + Number(partial.amount)) * 100) / 100;
+    if (partial.amount < 0 && nextBal < -0.001) throw new Error("Недостаточно средств");
+    wallet.balance = nextBal;
+    await db.saveWallet(wallet);
+    const row = {
+      id: uid("t-"),
+      email,
+      createdAt: Date.now(),
+      status: "done",
+      balanceAfter: nextBal,
+      comment: "",
+      ...partial,
+    };
+    await db.insertTx(row);
+    return row;
+  });
 }
 
 function readBody(req) {
@@ -640,12 +673,47 @@ const SECURITY_HEADERS = {
   ...(PRODUCTION ? { "Strict-Transport-Security": "max-age=31536000; includeSubDomains" } : {}),
 };
 
+const ADMIN_COOKIE = "alfa_admin";
+
+function adminCookieValue() {
+  return crypto.createHash("sha256").update(`admin|${ADMIN_KEY || "AlfaDev-2026"}`).digest("hex");
+}
+
+function readCookie(req, name) {
+  const raw = String(req.headers.cookie || "");
+  for (const part of raw.split(";")) {
+    const i = part.indexOf("=");
+    if (i < 1) continue;
+    if (part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return "";
+}
+
+function setAdminCookie(res, clear) {
+  const secure = PRODUCTION ? "; Secure" : "";
+  const value = clear ? "" : adminCookieValue();
+  const age = clear ? 0 : 12 * 60 * 60;
+  res.setHeader("Set-Cookie", `${ADMIN_COOKIE}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${secure}`);
+}
+
+function adminSessionOk(req) {
+  const got = readCookie(req, ADMIN_COOKIE);
+  if (!got) return false;
+  const expect = adminCookieValue();
+  const left = Buffer.from(got);
+  const right = Buffer.from(expect);
+  if (left.length !== right.length) return false;
+  return crypto.timingSafeEqual(left, right);
+}
+
 function send(res, status, body) {
   const data = JSON.stringify(body);
+  const cookie = res.getHeader("Set-Cookie");
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(data),
     "Cache-Control": "no-store",
+    ...(cookie ? { "Set-Cookie": cookie } : {}),
     ...SECURITY_HEADERS,
   });
   res.end(data);
@@ -702,7 +770,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
-    await locked(async () => {
+    await (async () => {
       if (req.method === "GET" && p === "/api/health") {
         send(res, 200, { ok: true, payOtpFrom: PAY_OTP_LIMIT });
         return;
@@ -871,7 +939,8 @@ const server = http.createServer(async (req, res) => {
         const wait = lockedMessage(user);
         if (wait) return send(res, 429, { error: wait });
         if (password.length < 8) return send(res, 400, { error: "Новый пароль от 8 символов" });
-        if (user.email !== DEMO_EMAIL && !(await takeCode("reset", user.email, b.code))) {
+        if (user.email === DEMO_EMAIL) return send(res, 400, { error: "Пароль демо-счёта менять нельзя" });
+        if (!(await takeCode("reset", user.email, b.code))) {
           return send(res, 400, { error: "Неверный или просроченный код из письма" });
         }
         await setUserPassword(user, password);
@@ -883,10 +952,27 @@ const server = http.createServer(async (req, res) => {
       }
 
       const adminKey = req.headers["x-admin-key"];
+      if (req.method === "POST" && p === "/api/admin/session") {
+        const b = await readBody(req);
+        const adminBucket = "adminfail:" + clientIp(req);
+        if (rateOver(adminBucket, 12)) return send(res, 429, { error: "Слишком много запросов. Подождите несколько минут." });
+        if (!adminKeyOk(b.key || adminKey)) {
+          tooMany(adminBucket, 12, 15 * 60 * 1000);
+          return send(res, 401, { error: "Неверный ключ администратора" });
+        }
+        setAdminCookie(res, false);
+        send(res, 200, { ok: true });
+        return;
+      }
+      if (req.method === "POST" && p === "/api/admin/logout") {
+        setAdminCookie(res, true);
+        send(res, 200, { ok: true });
+        return;
+      }
       if (p.startsWith("/api/admin")) {
         const adminBucket = "adminfail:" + clientIp(req);
         if (rateOver(adminBucket, 12)) return send(res, 429, { error: "Слишком много запросов. Подождите несколько минут." });
-        if (!adminKeyOk(adminKey)) {
+        if (!adminSessionOk(req) && !adminKeyOk(adminKey)) {
           tooMany(adminBucket, 12, 15 * 60 * 1000);
           return send(res, 401, { error: "Неверный ключ администратора" });
         }
@@ -1114,39 +1200,43 @@ const server = http.createServer(async (req, res) => {
         try { await assertNotFrozen(email); await assertNotSelf(email, payee); await assertLimits(email, amount); } catch (e) { return send(res, 400, { error: e.message }); }
         if (amount > wallet.balance) return send(res, 400, { error: "Недостаточно средств" });
         try { await assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
-        const fraud = await scoreOutgoing(email, amount, payee, sess, "expense");
+        const resolved = await db.resolvePayee(payee, email);
+        if (resolved.ambiguous) return send(res, 400, { error: "Найдено несколько клиентов с таким именем. Укажите телефон или номер кошелька." });
+        const otherEarly = resolved.user;
+        const fraud = await scoreOutgoing(email, amount, otherEarly ? (otherEarly.phone || payee) : payee, sess, "expense");
         if (modelBlocks(fraud)) {
           console.warn("[ml] transfer blocked", { email, anomaly: fraud.anomaly, final_score: fraud.final_score });
           return send(res, 400, { error: clientBlockedMsg() });
         }
-        const outTx = await addTx(email, {
-          name: isRuMobile(payee) ? formatRuPhone(payee) : payee,
-          amount: -amount,
-          type: "expense",
-          icon: "person",
-          category: "Переводы",
-          comment,
-          counterparty: payee,
-          holdQuery: payee,
-          ...mlPatch(fraud),
-        });
-        await addNote(email, "Списание", `${payee}: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: outTx.id });
-        const other = await findPayee(payee, email);
-        if (other) {
-          const inTx = await addTx(other.email, {
-            name: `${me.lastName} ${me.firstName}`.trim(),
-            amount,
-            type: "income",
+        await locked(async () => {
+          const outTx = await addTx(email, {
+            name: isRuMobile(payee) ? formatRuPhone(payee) : payee,
+            amount: -amount,
+            type: "expense",
             icon: "person",
             category: "Переводы",
             comment,
-            counterparty: me.phone || email,
-            linkedTxId: outTx.id,
+            counterparty: payee,
+            holdQuery: payee,
+            ...mlPatch(fraud),
           });
-          outTx.linkedTxId = inTx.id;
-          await db.saveTx(outTx);
-          await addNote(other.email, "Перевод получен", `${me.firstName} отправил ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: inTx.id });
-        }
+          await addNote(email, "Списание", `${payee}: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: outTx.id });
+          if (otherEarly) {
+            const inTx = await addTx(otherEarly.email, {
+              name: `${me.lastName} ${me.firstName}`.trim(),
+              amount,
+              type: "income",
+              icon: "person",
+              category: "Переводы",
+              comment,
+              counterparty: me.phone || email,
+              linkedTxId: outTx.id,
+            });
+            outTx.linkedTxId = inTx.id;
+            await db.saveTx(outTx);
+            await addNote(otherEarly.email, "Перевод получен", `${me.firstName} отправил ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: inTx.id });
+          }
+        });
         send(res, 200, await snapshot(email));
         return;
       }
@@ -1156,6 +1246,9 @@ const server = http.createServer(async (req, res) => {
         const amount = Number(b.amount);
         try { await assertNotFrozen(email); } catch (e) { return send(res, 400, { error: e.message }); }
         if (!(amount > 0)) return send(res, 400, { error: "Укажите сумму" });
+        if (amount > 100000) return send(res, 400, { error: "За один раз можно пополнить не больше 100 000 ₽" });
+        const topped = await db.topupSince(email, startOfDay());
+        if (topped + amount > 300000) return send(res, 400, { error: "Дневной лимит пополнения 300 000 ₽. Попробуйте завтра или меньшую сумму." });
         const fraud = await scoreOutgoing(email, amount, "Альфа-Банк", sess, "income");
         if (modelBlocks(fraud)) {
           console.warn("[ml] topup blocked", { email, anomaly: fraud.anomaly, final_score: fraud.final_score });
@@ -1188,39 +1281,43 @@ const server = http.createServer(async (req, res) => {
         if (payee && await isSelfPayee(email, payee)) return send(res, 400, { error: "Нельзя оплатить свой QR" });
         if (amount > wallet.balance) return send(res, 400, { error: "Недостаточно средств" });
         try { await assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
-        const other = payee ? await findPayee(payee, email) : null;
+        const resolved = payee ? await db.resolvePayee(payee, email) : { user: null, ambiguous: false };
+        if (resolved.ambiguous) return send(res, 400, { error: "Найдено несколько клиентов с таким именем. Укажите телефон или номер кошелька." });
+        const other = resolved.user;
         const fraud = await scoreOutgoing(email, amount, other ? (other.phone || payee) : "QR-касса", sess, "expense");
         if (modelBlocks(fraud)) {
           console.warn("[ml] qr blocked", { email, anomaly: fraud.anomaly, final_score: fraud.final_score });
           return send(res, 400, { error: clientBlockedMsg() });
         }
         const title = other ? `${other.lastName} ${other.firstName}`.trim() : merchant;
-        const qrTx = await addTx(email, {
-          name: title,
-          amount: -amount,
-          type: "expense",
-          icon: "qr_code",
-          category: other ? "Переводы" : "Прочее",
-          comment: "Оплата QR",
-          counterparty: other ? (other.phone || other.walletId) : merchant,
-          ...mlPatch(fraud),
-        });
-        await addNote(email, "Списание", `QR · ${title}: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: qrTx.id });
-        if (other) {
-          const inTx = await addTx(other.email, {
-            name: `${me.lastName} ${me.firstName}`.trim(),
-            amount,
-            type: "income",
+        await locked(async () => {
+          const qrTx = await addTx(email, {
+            name: title,
+            amount: -amount,
+            type: "expense",
             icon: "qr_code",
-            category: "Переводы",
+            category: other ? "Переводы" : "Прочее",
             comment: "Оплата QR",
-            counterparty: me.phone || email,
-            linkedTxId: qrTx.id,
+            counterparty: other ? (other.phone || other.walletId) : merchant,
+            ...mlPatch(fraud),
           });
-          qrTx.linkedTxId = inTx.id;
-          await db.saveTx(qrTx);
-          await addNote(other.email, "Перевод получен", `${me.firstName} оплатил ${amount.toLocaleString("ru-RU")} ₽ по QR`, "transfer", { txId: inTx.id });
-        }
+          await addNote(email, "Списание", `QR · ${title}: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: qrTx.id });
+          if (other) {
+            const inTx = await addTx(other.email, {
+              name: `${me.lastName} ${me.firstName}`.trim(),
+              amount,
+              type: "income",
+              icon: "qr_code",
+              category: "Переводы",
+              comment: "Оплата QR",
+              counterparty: me.phone || email,
+              linkedTxId: qrTx.id,
+            });
+            qrTx.linkedTxId = inTx.id;
+            await db.saveTx(qrTx);
+            await addNote(other.email, "Перевод получен", `${me.firstName} оплатил ${amount.toLocaleString("ru-RU")} ₽ по QR`, "transfer", { txId: inTx.id });
+          }
+        });
         send(res, 200, await snapshot(email));
         return;
       }
@@ -1242,36 +1339,43 @@ const server = http.createServer(async (req, res) => {
             fail += 1;
             continue;
           }
+          const resolved = await db.resolvePayee(phone || name, email);
+          if (resolved.ambiguous) {
+            fail += 1;
+            continue;
+          }
           const fraud = await scoreOutgoing(email, amount, phone || name, sess, "expense");
           if (modelBlocks(fraud)) {
             fail += 1;
             continue;
           }
-          const bulkTx = await addTx(email, {
-            name: `Массовый: ${name}`,
-            amount: -amount,
-            type: "expense",
-            icon: "upload_file",
-            category: "Переводы",
-            comment: "Массовый платёж",
-            counterparty: phone || name,
-            ...mlPatch(fraud),
-          });
-          const other = await findPayee(phone || name, email);
-          if (other) {
-            const inTx = await addTx(other.email, {
-              name: `Массовый от ${me.firstName}`,
-              amount,
-              type: "income",
+          const other = resolved.user;
+          await locked(async () => {
+            const bulkTx = await addTx(email, {
+              name: `Массовый: ${name}`,
+              amount: -amount,
+              type: "expense",
               icon: "upload_file",
               category: "Переводы",
               comment: "Массовый платёж",
-              counterparty: me.phone || email,
-              linkedTxId: bulkTx.id,
+              counterparty: phone || name,
+              ...mlPatch(fraud),
             });
-            bulkTx.linkedTxId = inTx.id;
-            await db.saveTx(bulkTx);
-          }
+            if (other) {
+              const inTx = await addTx(other.email, {
+                name: `Массовый от ${me.firstName}`,
+                amount,
+                type: "income",
+                icon: "upload_file",
+                category: "Переводы",
+                comment: "Массовый платёж",
+                counterparty: me.phone || email,
+                linkedTxId: bulkTx.id,
+              });
+              bulkTx.linkedTxId = inTx.id;
+              await db.saveTx(bulkTx);
+            }
+          });
           ok += 1;
         }
         await addNote(email, "Массовый платёж", `Успешно: ${ok}, ошибок: ${fail}`, "system");
@@ -1336,11 +1440,12 @@ const server = http.createServer(async (req, res) => {
           const n = Number(v);
           return Number.isFinite(n) && n > 0 ? n : fallback;
         };
+        const cap = defaultLimits();
         w.limits = {
-          day: num(b.day, cur.day),
-          month: num(b.month, cur.month),
-          op: num(b.op, cur.op),
-          abroad: num(b.abroad, cur.abroad),
+          day: Math.min(cap.day, num(b.day, cur.day)),
+          month: Math.min(cap.month, num(b.month, cur.month)),
+          op: Math.min(cap.op, num(b.op, cur.op)),
+          abroad: Math.min(cap.abroad, num(b.abroad, cur.abroad)),
           alertDay: Math.min(100, Math.max(1, num(b.alertDay, cur.alertDay))),
           alertMonth: Math.min(100, Math.max(1, num(b.alertMonth, cur.alertMonth))),
           alertOp: Math.min(100, Math.max(1, num(b.alertOp, cur.alertOp))),
@@ -1381,7 +1486,7 @@ const server = http.createServer(async (req, res) => {
         send(res, 404, { error: "Нет такого метода" });
         return;
       }
-    });
+    })();
 
     if (res.otpJob && !res.writableEnded) {
       try {
