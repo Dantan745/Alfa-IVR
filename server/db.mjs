@@ -349,26 +349,43 @@ export async function findUserByLogin(login) {
   return mapUser(r.rows[0]);
 }
 
-export async function findPayee(queryText, fromEmail) {
+export async function resolvePayee(queryText, fromEmail) {
   const q = String(queryText || "").trim();
-  if (!q) return null;
+  if (!q) return { user: null, ambiguous: false };
+  const qLower = q.toLowerCase();
   const digits = q.replace(/\D/g, "");
   const phoneKey = digits.length >= 10 ? digits.slice(-10) : "";
   const r = await query(
-    `${userSql}
-     WHERE u.email <> $1
+    `SELECT email, wallet_id, phone_key, last_name, first_name, middle_name
+     FROM app_user
+     WHERE email <> $1
        AND (
-         u.email = $2
-         OR lower(u.wallet_id) = $2
-         OR ($3 <> '' AND u.phone_key = $3)
-         OR lower(u.last_name) = $2
-         OR lower(u.last_name || ' ' || u.first_name || ' ' || u.middle_name) LIKE $4
+         email = $2
+         OR lower(wallet_id) = $2
+         OR ($3 <> '' AND phone_key = $3)
+         OR lower(last_name) = $2
+         OR lower(trim(both ' ' from last_name || ' ' || first_name || ' ' || middle_name)) = $2
        )
-     GROUP BY u.email
-     LIMIT 1`,
-    [fromEmail, q.toLowerCase(), phoneKey, `%${q.toLowerCase().replace(/[%_\\]/g, "\\$&")}%`],
+     LIMIT 6`,
+    [fromEmail, qLower, phoneKey],
   );
-  return mapUser(r.rows[0]);
+  const fullName = (row) => `${row.last_name} ${row.first_name} ${row.middle_name}`.replace(/\s+/g, " ").trim().toLowerCase();
+  const exact = r.rows.filter((row) =>
+    row.email === qLower
+    || String(row.wallet_id).toLowerCase() === qLower
+    || (phoneKey && row.phone_key === phoneKey)
+    || fullName(row) === qLower
+  );
+  if (exact.length > 1) return { user: null, ambiguous: true };
+  if (exact.length === 1) return { user: await getUser(exact[0].email), ambiguous: false };
+  if (r.rows.length > 1) return { user: null, ambiguous: true };
+  if (r.rows.length === 1) return { user: await getUser(r.rows[0].email), ambiguous: false };
+  return { user: null, ambiguous: false };
+}
+
+export async function findPayee(queryText, fromEmail) {
+  const found = await resolvePayee(queryText, fromEmail);
+  return found.ambiguous ? null : found.user;
 }
 
 export async function phoneTaken(phone, exceptEmail) {
@@ -492,6 +509,16 @@ export async function saveWallet(wallet) {
       percent(limits.alertOp, 90), percent(limits.alertDay, 80), percent(limits.alertMonth, 70), percent(limits.alertAbroad, 100),
     ],
   );
+}
+
+export async function topupSince(email, fromTs) {
+  const r = await query(
+    `SELECT COALESCE(SUM(amount), 0) AS topped
+     FROM tx
+     WHERE email = $1 AND amount > 0 AND name = 'Пополнение' AND created_at >= $2`,
+    [email, fromTs],
+  );
+  return Number(r.rows[0].topped);
 }
 
 export async function spentSince(email, fromTs, transfersOnly) {

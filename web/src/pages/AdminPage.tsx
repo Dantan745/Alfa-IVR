@@ -59,15 +59,13 @@ type MlReport = {
   generatedAt?: number;
 };
 
-const KEY = "alfa-admin-key";
 const NOTIFY_DRAFT = "alfa-admin-notify";
 type Tab = "overview" | "users" | "ops" | "ml";
 
 async function adminReq<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  headers.set("X-Admin-Key", sessionStorage.getItem(KEY) || "");
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  const res = await fetch(path, { ...init, headers });
+  const res = await fetch(path, { ...init, headers, credentials: "include" });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as { error?: string }).error || "Ошибка");
   return data as T;
@@ -123,7 +121,8 @@ function downloadJson(name: string, rows: unknown) {
 
 export default function AdminPage() {
   const [pass, setPass] = useState("");
-  const [ok, setOk] = useState(!!sessionStorage.getItem(KEY));
+  const [ok, setOk] = useState(false);
+  const [gate, setGate] = useState(true);
   const [err, setErr] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -210,19 +209,23 @@ export default function AdminPage() {
 
   async function login(e: React.FormEvent) {
     e.preventDefault();
-    sessionStorage.setItem(KEY, pass);
     try {
+      await adminReq("/api/admin/session", { method: "POST", body: JSON.stringify({ key: pass }) });
+      setPass("");
       await loadList();
       setOk(true);
       setErr("");
     } catch (ex) {
-      sessionStorage.removeItem(KEY);
       setErr(ex instanceof Error ? ex.message : "Неверный ключ");
     }
   }
 
   useEffect(() => {
-    if (ok) void loadList().catch(() => { setOk(false); sessionStorage.removeItem(KEY); });
+    void loadList().then(() => setOk(true)).catch(() => setOk(false)).finally(() => setGate(false));
+  }, []);
+
+  useEffect(() => {
+    if (ok) void loadList().catch(() => setOk(false));
   }, [ok]);
 
   useEffect(() => {
@@ -339,12 +342,14 @@ export default function AdminPage() {
     }
   }
 
+  if (gate) return <div className="admin-shell" />;
+
   if (!ok) {
     return (
       <div className="admin-shell flex items-center justify-center p-6">
         <form onSubmit={(e) => void login(e)} className="w-full max-w-sm rounded-[24px] p-6" style={{ background: "#191C1C" }}>
           <p className="text-[#E0E0E0] text-[20px] mb-1">Кабинет разработчика</p>
-          <p className="text-[rgba(185,202,203,0.5)] text-[13px] mb-4">Ключ запускается вместе с сервером (консоль)</p>
+          <p className="text-[rgba(185,202,203,0.5)] text-[13px] mb-4">Ключ не сохраняется в браузере. Сессия кабинета живёт 12 часов.</p>
           <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Ключ администратора" className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(63,78,79,0.7)] rounded-[14px] px-4 py-3 mb-3 outline-none" />
           {err && <p className="text-[#FFB4AB] text-[13px] mb-2">{err}</p>}
           <button className="w-full h-12 rounded-[14px] text-[#0B1A1A] font-medium" style={{ background: "linear-gradient(128deg,#00D2D3,#48FFD5)" }}>Войти</button>
@@ -370,7 +375,7 @@ export default function AdminPage() {
           </div>
           <div className="flex gap-2">
             <a href="/" className="px-4 py-2 rounded-[12px] text-[13px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.1)" }}>Кошелёк</a>
-            <button onClick={() => { sessionStorage.removeItem(KEY); setOk(false); }} className="px-4 py-2 rounded-[12px] text-[13px] text-[rgba(185,202,203,0.7)]">Выйти</button>
+            <button onClick={() => { void adminReq("/api/admin/logout", { method: "POST" }).finally(() => setOk(false)); }} className="px-4 py-2 rounded-[12px] text-[13px] text-[rgba(185,202,203,0.7)]">Выйти</button>
           </div>
         </div>
 
