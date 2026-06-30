@@ -674,9 +674,21 @@ const SECURITY_HEADERS = {
 };
 
 const ADMIN_COOKIE = "alfa_admin";
+let adminEpoch = 1;
+
+function adminSecret() {
+  const expected = ADMIN_KEY || (PRODUCTION ? "" : "AlfaDev-2026");
+  if (!expected || (PRODUCTION && (expected === "AlfaDev-2026" || expected.length < 16))) return "";
+  return expected;
+}
 
 function adminCookieValue() {
-  return crypto.createHash("sha256").update(`admin|${ADMIN_KEY || "AlfaDev-2026"}`).digest("hex");
+  const secret = adminSecret();
+  if (!secret) return "";
+  const exp = Date.now() + 12 * 60 * 60 * 1000;
+  const body = `${exp}.${adminEpoch}`;
+  const mac = crypto.createHmac("sha256", secret).update(body).digest("hex");
+  return `${body}.${mac}`;
 }
 
 function readCookie(req, name) {
@@ -698,9 +710,14 @@ function setAdminCookie(res, clear) {
 
 function adminSessionOk(req) {
   const got = readCookie(req, ADMIN_COOKIE);
-  if (!got) return false;
-  const expect = adminCookieValue();
-  const left = Buffer.from(got);
+  const secret = adminSecret();
+  if (!got || !secret) return false;
+  const parts = got.split(".");
+  if (parts.length !== 3) return false;
+  const [exp, epoch, mac] = parts;
+  if (epoch !== String(adminEpoch) || !(Number(exp) > Date.now())) return false;
+  const expect = crypto.createHmac("sha256", secret).update(`${exp}.${epoch}`).digest("hex");
+  const left = Buffer.from(mac);
   const right = Buffer.from(expect);
   if (left.length !== right.length) return false;
   return crypto.timingSafeEqual(left, right);
@@ -965,6 +982,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if (req.method === "POST" && p === "/api/admin/logout") {
+        if (adminSessionOk(req) || adminKeyOk(adminKey)) adminEpoch += 1;
         setAdminCookie(res, true);
         send(res, 200, { ok: true });
         return;
