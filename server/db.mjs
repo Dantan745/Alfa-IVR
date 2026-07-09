@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS app_user (
   first_name          text NOT NULL DEFAULT '',
   middle_name         text NOT NULL DEFAULT '',
   passport            text NOT NULL DEFAULT '',
-  otp_channel         text NOT NULL DEFAULT 'sms' CHECK (otp_channel IN ('sms', 'email')),
+  otp_channel         text NOT NULL DEFAULT 'sms' CHECK (otp_channel IN ('sms', 'email', 'telegram')),
   login_attempts      integer NOT NULL DEFAULT 1 CHECK (login_attempts >= 1),
   last_login_attempts integer NOT NULL DEFAULT 1 CHECK (last_login_attempts >= 1),
   frozen              boolean NOT NULL DEFAULT false,
@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS app_user (
   created_at          bigint NOT NULL
 );
 ALTER TABLE app_user ADD COLUMN IF NOT EXISTS locked_until bigint;
+ALTER TABLE app_user DROP CONSTRAINT IF EXISTS app_user_otp_channel_check;
+ALTER TABLE app_user ADD CONSTRAINT app_user_otp_channel_check CHECK (otp_channel IN ('sms', 'email', 'telegram'));
 DROP INDEX IF EXISTS app_user_phone_key_idx;
 CREATE UNIQUE INDEX IF NOT EXISTS app_user_phone_key_idx ON app_user (phone_key) WHERE phone_key <> '';
 
@@ -175,6 +177,14 @@ CREATE TABLE IF NOT EXISTS notify_settings (
   smtp_user    text NOT NULL DEFAULT '',
   smtp_pass    text NOT NULL DEFAULT '',
   smtp_from    text NOT NULL DEFAULT ''
+);
+ALTER TABLE notify_settings ADD COLUMN IF NOT EXISTS telegram_bot_token text NOT NULL DEFAULT '';
+ALTER TABLE notify_settings ADD COLUMN IF NOT EXISTS telegram_bot_user text NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS telegram_link (
+  phone_key  text PRIMARY KEY,
+  chat_id    text NOT NULL,
+  linked_at  bigint NOT NULL
 );
 `;
 
@@ -381,6 +391,25 @@ export async function resolvePayee(queryText, fromEmail) {
   if (r.rows.length > 1) return { user: null, ambiguous: true };
   if (r.rows.length === 1) return { user: await getUser(r.rows[0].email), ambiguous: false };
   return { user: null, ambiguous: false };
+}
+
+export async function getTelegramChat(phone) {
+  const digits = ruMobileDigits(phone);
+  const key = digits.length >= 10 ? digits.slice(-10) : "";
+  if (!key) return "";
+  const r = await query("SELECT chat_id FROM telegram_link WHERE phone_key = $1", [key]);
+  return r.rows[0] ? String(r.rows[0].chat_id) : "";
+}
+
+export async function saveTelegramChat(phone, chatId) {
+  const digits = ruMobileDigits(phone);
+  const key = digits.length >= 10 ? digits.slice(-10) : "";
+  if (!key || !chatId) return;
+  await query(
+    `INSERT INTO telegram_link (phone_key, chat_id, linked_at) VALUES ($1, $2, $3)
+     ON CONFLICT (phone_key) DO UPDATE SET chat_id = EXCLUDED.chat_id, linked_at = EXCLUDED.linked_at`,
+    [key, String(chatId), Date.now()],
+  );
 }
 
 export async function findPayee(queryText, fromEmail) {
@@ -811,17 +840,20 @@ export async function readNotify() {
     smtpUser: row.smtp_user,
     smtpPass: row.smtp_pass,
     smtpFrom: row.smtp_from,
+    telegramBotToken: row.telegram_bot_token || "",
+    telegramBotUser: row.telegram_bot_user || "",
   };
 }
 
 export async function writeNotify(cfg) {
   await query(
-    `INSERT INTO notify_settings (id, smsru_api_id, sms_from, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from)
-     VALUES (1, $1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO notify_settings (id, smsru_api_id, sms_from, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from, telegram_bot_token, telegram_bot_user)
+     VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (id) DO UPDATE SET
        smsru_api_id = EXCLUDED.smsru_api_id, sms_from = EXCLUDED.sms_from, smtp_host = EXCLUDED.smtp_host,
-       smtp_port = EXCLUDED.smtp_port, smtp_user = EXCLUDED.smtp_user, smtp_pass = EXCLUDED.smtp_pass, smtp_from = EXCLUDED.smtp_from`,
-    [cfg.smsruApiId || "", cfg.smsFrom || "", cfg.smtpHost || "smtp.mail.ru", Number(cfg.smtpPort) || 465, cfg.smtpUser || "", cfg.smtpPass || "", cfg.smtpFrom || ""],
+       smtp_port = EXCLUDED.smtp_port, smtp_user = EXCLUDED.smtp_user, smtp_pass = EXCLUDED.smtp_pass, smtp_from = EXCLUDED.smtp_from,
+       telegram_bot_token = EXCLUDED.telegram_bot_token, telegram_bot_user = EXCLUDED.telegram_bot_user`,
+    [cfg.smsruApiId || "", cfg.smsFrom || "", cfg.smtpHost || "smtp.mail.ru", Number(cfg.smtpPort) || 465, cfg.smtpUser || "", cfg.smtpPass || "", cfg.smtpFrom || "", cfg.telegramBotToken || "", cfg.telegramBotUser || ""],
   );
 }
 

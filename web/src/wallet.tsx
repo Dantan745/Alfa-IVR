@@ -82,8 +82,8 @@ type WalletCtx = {
   pendingPayee: string;
   setPendingPayee: (v: string) => void;
   login: (email: string, password: string, code?: string) => Promise<string | null>;
-  requestCode: (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number }) => Promise<{ via?: string; masked?: string; fallback?: boolean; error?: string }>;
-  forgotPassword: (login: string, channel?: "sms" | "email") => Promise<{ via?: string; masked?: string; fallback?: boolean; error?: string }>;
+  requestCode: (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number }) => Promise<{ via?: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string; error?: string }>;
+  forgotPassword: (login: string, channel?: "sms" | "email") => Promise<{ via?: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string; error?: string }>;
   resetPassword: (login: string, code: string, password: string) => Promise<string | null>;
   register: (u: Omit<DbUser, "passwordHash" | "walletId" | "createdAt"> & { password: string; code: string; channel?: "sms" | "email" }) => Promise<string | null>;
   logout: () => void;
@@ -191,7 +191,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const requestCode = useCallback(async (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number }) => {
     try {
       const r = await api.requestCode(opts);
-      return { via: r.via, masked: r.masked, fallback: r.fallback };
+      return { via: r.via, masked: r.masked, fallback: r.fallback, needLink: r.needLink, botUrl: r.botUrl };
     } catch (e) {
       return { error: fail(e) };
     }
@@ -200,7 +200,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const forgotPassword = useCallback(async (loginId: string, channel?: "sms" | "email") => {
     try {
       const r = await api.forgot(loginId, channel);
-      return { via: r.via, masked: r.masked, fallback: r.fallback };
+      return { via: r.via, masked: r.masked, fallback: r.fallback, needLink: r.needLink, botUrl: r.botUrl };
     } catch (e) {
       return { error: fail(e) };
     }

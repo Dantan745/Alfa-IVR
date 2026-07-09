@@ -147,7 +147,8 @@ export default function AdminPage() {
         const saved = JSON.parse(raw);
         delete saved.smsruApiId;
         delete saved.smtpPass;
-        return { smsruApiId: "", smtpPass: "", ...saved };
+        delete saved.telegramBotToken;
+        return { smsruApiId: "", smtpPass: "", telegramBotToken: "", ...saved };
       }
     } catch {
       /* ignore */
@@ -155,6 +156,9 @@ export default function AdminPage() {
     return {
       sms: false,
       email: false,
+      telegram: false,
+      telegramBot: "",
+      telegramBotToken: "",
       smsruApiId: "",
       smtpHost: "smtp.mail.ru",
       smtpPort: 465,
@@ -417,13 +421,15 @@ export default function AdminPage() {
             </div>
 
             <div className="rounded-[20px] p-4 mb-4" style={{ background: "#191C1C" }}>
-              <p className="text-[16px] font-medium mb-1">2FA: СМС и почта</p>
+              <p className="text-[16px] font-medium mb-1">Код: Telegram и почта</p>
               <p className="text-[12px] text-[rgba(185,202,203,0.5)] mb-3">
-                СМС: ключ с sms.ru (API ID). Почта: SMTP ящика (Mail.ru / Яндекс / Gmail с паролем приложения). Сейчас СМС {notify.sms ? "включено" : "не настроено"}, почта {notify.email ? "включена" : "не настроена"}.
-                Для Mail.ru обычный пароль от ящика не подходит — нужен пароль приложения.
+                На телефон код приходит в Telegram. Бот {notify.telegram ? `@${notify.telegramBot || "подключён"}` : "не подключён"}. Почта {notify.email ? "включена" : "не настроена"}. SMS.ru оставлен запасным, если бота нет.
+                Для Mail.ru нужен пароль приложения, не пароль от ящика.
               </p>
               <div className="grid sm:grid-cols-2 gap-2 text-[13px]">
-                <input className="bg-black/30 rounded-[10px] px-3 py-2" placeholder="SMS.ru API ID" value={notify.smsruApiId} onChange={(e) => setNotify({ ...notify, smsruApiId: e.target.value })} />
+                <input className="bg-black/30 rounded-[10px] px-3 py-2" placeholder="Имя бота без @" value={notify.telegramBot || ""} onChange={(e) => setNotify({ ...notify, telegramBot: e.target.value.replace(/^@/, "") })} />
+                <input className="bg-black/30 rounded-[10px] px-3 py-2" type="password" placeholder="Токен бота, пусто — не менять" value={notify.telegramBotToken || ""} onChange={(e) => setNotify({ ...notify, telegramBotToken: e.target.value })} />
+                <input className="bg-black/30 rounded-[10px] px-3 py-2" placeholder="SMS.ru API ID, если нет Telegram" value={notify.smsruApiId} onChange={(e) => setNotify({ ...notify, smsruApiId: e.target.value })} />
                 <input className="bg-black/30 rounded-[10px] px-3 py-2" placeholder="SMTP хост" value={notify.smtpHost} onChange={(e) => setNotify({ ...notify, smtpHost: e.target.value })} />
                 <input className="bg-black/30 rounded-[10px] px-3 py-2" placeholder="SMTP порт" value={String(notify.smtpPort)} onChange={(e) => setNotify({ ...notify, smtpPort: Number(e.target.value) || 465 })} />
                 <input className="bg-black/30 rounded-[10px] px-3 py-2" placeholder="SMTP логин (почта)" value={notify.smtpUser} onChange={(e) => setNotify({ ...notify, smtpUser: e.target.value })} />
