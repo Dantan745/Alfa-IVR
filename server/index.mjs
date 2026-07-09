@@ -4,7 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { deliver, loadNotify, hydrateNotify, publicNotify, saveNotify } from "./notify.mjs";
+import { deliver, ensureTelegramWebhook, handleTelegramUpdate, hydrateNotify, loadNotify, maskPhone, phoneDeliveryPlan, publicNotify, saveNotify, telegramHookOk } from "./notify.mjs";
 import { buildReport, extractFeatures, runCustomModel, scoreWithFriendModelAsync } from "./ml/index.mjs";
 import { buildFraudSample } from "./ml/features.mjs";
 import { formatRuPhone, isRuMobile, ruMobileDigits, samePhone } from "./phone.mjs";
@@ -793,6 +793,18 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      if (req.method === "POST" && p === "/api/telegram/hook") {
+        const secret = req.headers["x-telegram-bot-api-secret-token"];
+        if (!telegramHookOk(secret)) {
+          send(res, 404, { error: "Нет такого метода" });
+          return;
+        }
+        const update = await readBody(req).catch(() => ({}));
+        try { await handleTelegramUpdate(update); } catch (e) { console.warn("Telegram:", e.message); }
+        send(res, 200, { ok: true });
+        return;
+      }
+
       if (req.method === "POST" && p.startsWith("/api/auth") && tooMany("auth:" + clientIp(req), 30, 10 * 60 * 1000)) {
         send(res, 429, { error: "Слишком много запросов. Подождите несколько минут." });
         return;
@@ -813,6 +825,10 @@ const server = http.createServer(async (req, res) => {
           }
           const user = await db.getUser(authed);
           const ch = channel || user.otpChannel || "sms";
+          if (ch !== "email") {
+            const plan = await phoneDeliveryPlan(user.phone);
+            if (plan.mode === "link") return send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: plan.botUrl, masked: maskPhone(user.phone) });
+          }
           try {
             const rec = await putCode("pay", authed, ch, ch === "email" ? user.email : user.phone);
             if (!PRODUCTION) console.log(`[код pay] ${authed} → ${rec.code} (${ch})`);
@@ -831,6 +847,10 @@ const server = http.createServer(async (req, res) => {
           if (await db.getUser(email)) return send(res, 400, { error: "Такой email уже зарегистрирован" });
           if (await phoneTaken(phone, email)) return send(res, 400, { error: "Этот номер телефона уже занят" });
           const ch = channel || "sms";
+          if (ch !== "email") {
+            const plan = await phoneDeliveryPlan(phone);
+            if (plan.mode === "link") return send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: plan.botUrl, masked: maskPhone(phone) });
+          }
           try {
             const rec = await putCode("register", email, ch, ch === "email" ? email : phone);
             if (!PRODUCTION) console.log(`[код register] ${email} / ${phone} → ${rec.code} (${ch})`);
@@ -851,6 +871,10 @@ const server = http.createServer(async (req, res) => {
         }
         if (user.email === DEMO_EMAIL) return send(res, 200, { ok: true, via: "demo", masked: "демо" });
         const ch = channel || user.otpChannel || "sms";
+        if (ch !== "email") {
+          const plan = await phoneDeliveryPlan(user.phone);
+          if (plan.mode === "link") return send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: plan.botUrl, masked: maskPhone(user.phone) });
+        }
         try {
           const rec = await putCode("login", user.email, ch, ch === "email" ? user.email : user.phone);
           if (!PRODUCTION) console.log(`[код login] ${user.email} / ${user.phone} → ${rec.code} (${ch})`);
@@ -938,6 +962,10 @@ const server = http.createServer(async (req, res) => {
         if (user.frozen) return send(res, 403, { error: "Счёт заблокирован. Обратитесь в поддержку." });
         if (user.email === DEMO_EMAIL) return send(res, 200, { ok: true, via: "demo", masked: "демо" });
         const ch = b.channel === "sms" ? "sms" : "email";
+        if (ch !== "email") {
+          const plan = await phoneDeliveryPlan(user.phone);
+          if (plan.mode === "link") return send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: plan.botUrl, masked: maskPhone(user.phone) });
+        }
         try {
           const rec = await putCode("reset", user.email, ch, ch === "sms" ? user.phone : user.email);
           if (!PRODUCTION) console.log(`[код reset] ${user.email} → ${rec.code} (${ch})`);
@@ -1509,8 +1537,12 @@ const server = http.createServer(async (req, res) => {
     if (res.otpJob && !res.writableEnded) {
       try {
         const del = await deliver(res.otpJob);
-        send(res, 200, { ok: true, via: del.via, masked: del.masked, ttl: 600, fallback: Boolean(del.fallback) });
+        send(res, 200, { ok: true, via: del.via, masked: del.masked, ttl: 600, fallback: Boolean(del.fallback), needLink: false, botUrl: "" });
       } catch (e) {
+        if (e.needLink) {
+          send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: e.botUrl || "", masked: "", ttl: 600 });
+          return;
+        }
         const job = res.otpJob;
         const canSkip = !PRODUCTION && job && ["login", "register"].includes(job.purpose) && job.owner;
         if (canSkip) {
@@ -1552,6 +1584,7 @@ const server = http.createServer(async (req, res) => {
 
 await db.initDb();
 await hydrateNotify();
+ensureTelegramWebhook().catch((e) => console.warn("Telegram webhook:", e.message));
 
 server.listen(PORT, HOST, () => {
   const lan = lanAddresses();

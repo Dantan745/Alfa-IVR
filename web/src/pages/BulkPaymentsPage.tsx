@@ -46,6 +46,7 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
   const [otpCode, setOtpCode] = useState("");
   const [otpChannel, setOtpChannel] = useState<OtpChannel>(user?.otpChannel === "email" ? "email" : "sms");
   const [otpHint, setOtpHint] = useState("");
+  const [otpBot, setOtpBot] = useState("");
 
   const parsed = useMemo(
     () =>
@@ -262,15 +263,21 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
         hint={otpHint}
         error={msg}
         busy={otpBusy || sending}
+        botUrl={otpBot}
         onCancel={() => setOtpOpen(false)}
         onSend={async () => {
           setOtpBusy(true);
           const r = await requestCode({ purpose: "pay", channel: otpChannel, amount: total });
           setOtpBusy(false);
           if (r.error) setMsg(r.error);
-          else {
+          else if (r.needLink) {
             setMsg("");
-            setOtpHint(r.fallback ? `СМС не дошло — код на почте ${r.masked}.` : `Код отправлен на ${r.masked}.`);
+            setOtpBot(r.botUrl || "");
+            setOtpHint("Откройте Telegram, поделитесь номером и запросите код ещё раз.");
+          } else {
+            setMsg("");
+            setOtpBot("");
+            setOtpHint(r.via === "telegram" ? `Код в Telegram на ${r.masked}.` : r.fallback ? `На телефон не дошло — код на почте ${r.masked}.` : `Код отправлен на ${r.masked}.`);
           }
         }}
         onConfirm={() => void runBulk(otpCode)}

@@ -2,8 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import nodemailer from "nodemailer";
-import { ruMobileDigits } from "./phone.mjs";
-import { readNotify, writeNotify } from "./db.mjs";
+import crypto from "node:crypto";
+import { isRuMobile, ruMobileDigits } from "./phone.mjs";
+import { getTelegramChat, readNotify, saveTelegramChat, writeNotify } from "./db.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || __dirname;
@@ -48,6 +49,8 @@ function fromEnv(file = {}) {
     smtpUser: keep(file.smtpUser, process.env.SMTP_USER),
     smtpPass: keep(file.smtpPass, process.env.SMTP_PASS).replace(/\s/g, ""),
     smtpFrom: keep(file.smtpFrom, process.env.SMTP_FROM) || keep(file.smtpUser, process.env.SMTP_USER),
+    telegramBotToken: keep(file.telegramBotToken, process.env.TELEGRAM_BOT_TOKEN),
+    telegramBotUser: keep(file.telegramBotUser, process.env.TELEGRAM_BOT_USERNAME).replace(/^@/, ""),
   };
 }
 
@@ -77,6 +80,8 @@ export async function saveNotify(patch) {
     smtpUser: keep(patch.smtpUser, cur.smtpUser),
     smtpPass: keep(patch.smtpPass, cur.smtpPass).replace(/\s/g, ""),
     smtpFrom: keep(patch.smtpFrom, cur.smtpFrom) || keep(patch.smtpUser, cur.smtpUser),
+    telegramBotToken: secretOrKeep(patch.telegramBotToken, cur.telegramBotToken),
+    telegramBotUser: keep(patch.telegramBotUser, cur.telegramBotUser).replace(/^@/, ""),
   };
   cache = next;
   await writeNotify(next);
@@ -93,7 +98,90 @@ export function publicNotify(cfg = loadNotify()) {
     smtpPort: cfg.smtpPort,
     smtpUser: cfg.smtpUser,
     smtpFrom: cfg.smtpFrom || cfg.smtpUser,
+    telegram: Boolean(telegramToken(cfg)),
+    telegramBot: (cfg.telegramBotUser || "").replace(/^@/, ""),
   };
+}
+
+function telegramToken(cfg = loadNotify()) {
+  return cfg.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || "";
+}
+
+function botUrl(cfg = loadNotify()) {
+  const user = (cfg.telegramBotUser || process.env.TELEGRAM_BOT_USERNAME || "").replace(/^@/, "");
+  return user ? `https://t.me/${user}` : "";
+}
+
+export function telegramHookOk(presented) {
+  const token = telegramToken();
+  if (!token || !presented) return false;
+  const expect = crypto.createHash("sha256").update(`tg|${token}`).digest("hex").slice(0, 32);
+  const left = Buffer.from(String(presented));
+  const right = Buffer.from(expect);
+  if (left.length !== right.length) return false;
+  return crypto.timingSafeEqual(left, right);
+}
+
+async function sendTelegram(token, chatId, text, keyboard) {
+  const body = { chat_id: chatId, text };
+  if (keyboard) body.reply_markup = { keyboard, resize_keyboard: true, one_time_keyboard: true };
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!data.ok) throw new Error(data.description || "Telegram не принял сообщение");
+}
+
+export async function phoneDeliveryPlan(phone) {
+  const cfg = loadNotify();
+  const token = telegramToken(cfg);
+  if (!token || !phone) return { mode: "sms" };
+  const chatId = await getTelegramChat(phone);
+  if (chatId) return { mode: "telegram", chatId };
+  return { mode: "link", botUrl: botUrl(cfg) };
+}
+
+export async function handleTelegramUpdate(update) {
+  const message = update?.message;
+  const token = telegramToken();
+  if (!message?.chat?.id || !token) return;
+  const chatId = message.chat.id;
+  const contact = message.contact;
+  if (contact && contact.user_id && message.from?.id && contact.user_id === message.from.id) {
+    if (!isRuMobile(contact.phone_number)) {
+      await sendTelegram(token, chatId, "Нужен российский мобильный номер: +7, 8 или 9…");
+      return;
+    }
+    await saveTelegramChat(contact.phone_number, chatId);
+    await sendTelegram(token, chatId, "Номер привязан. Вернитесь в Альфа Кошелёк и запросите код ещё раз.");
+    return;
+  }
+  await sendTelegram(
+    token,
+    chatId,
+    "Это бот кодов Альфа Кошелька. Нажмите кнопку и отправьте свой номер: код подтверждения придёт в этот чат.",
+    [[{ text: "Поделиться номером", request_contact: true }]],
+  );
+}
+
+export async function ensureTelegramWebhook() {
+  const token = telegramToken();
+  if (!token || process.env.NODE_ENV !== "production") return;
+  const secret = crypto.createHash("sha256").update(`tg|${token}`).digest("hex").slice(0, 32);
+  const res = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      url: "https://alfa-koshelek-cr.fly.dev/api/telegram/hook",
+      secret_token: secret,
+      allowed_updates: ["message"],
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!data.ok) console.warn("Telegram webhook не установлен:", data.description || res.status);
+  else console.log("Telegram webhook установлен");
 }
 
 export function maskPhone(p) {
@@ -210,6 +298,19 @@ export async function deliver({ channel, phone, email, code, purpose }) {
 
   if (channel === "email") {
     return tryEmail(cfg, email, code, mailText);
+  }
+
+  const token = telegramToken(cfg);
+  if (token && phone) {
+    const chatId = await getTelegramChat(phone);
+    if (chatId) {
+      await sendTelegram(token, chatId, mailText);
+      return { via: "telegram", masked: maskPhone(phone) };
+    }
+    const err = new Error("Код придёт в Telegram на этот номер. Откройте бота, нажмите «Поделиться номером» и запросите код ещё раз.");
+    err.needLink = true;
+    err.botUrl = botUrl(cfg);
+    throw err;
   }
 
   let smsErr = "";
