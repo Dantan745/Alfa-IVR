@@ -662,6 +662,26 @@ function readBody(req) {
   });
 }
 
+const APP_ORIGINS = new Set([
+  "https://localhost",
+  "http://localhost",
+  "capacitor://localhost",
+  "app://alfa",
+]);
+
+function headersFor(req) {
+  const origin = String(req.headers.origin || "");
+  if (!APP_ORIGINS.has(origin)) return SECURITY_HEADERS;
+  return {
+    ...SECURITY_HEADERS,
+    "Cross-Origin-Resource-Policy": "cross-origin",
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Device-Id",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    Vary: "Origin",
+  };
+}
+
 const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
@@ -731,7 +751,7 @@ function send(res, status, body) {
     "Content-Length": Buffer.byteLength(data),
     "Cache-Control": "no-store",
     ...(cookie ? { "Set-Cookie": cookie } : {}),
-    ...SECURITY_HEADERS,
+    ...(res.alfaHeaders || SECURITY_HEADERS),
   });
   res.end(data);
 }
@@ -779,9 +799,10 @@ function serveStatic(req, res, urlPath) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
   const p = url.pathname.replace(/\/+$/, "") || "/";
+  res.alfaHeaders = headersFor(req);
 
-  if (req.method === "OPTIONS") {
-    res.writeHead(204, SECURITY_HEADERS);
+  if (req.method === "OPTIONS" && p.startsWith("/api")) {
+    res.writeHead(204, res.alfaHeaders);
     res.end();
     return;
   }

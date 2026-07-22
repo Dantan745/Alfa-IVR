@@ -32,6 +32,11 @@ export function setToken(token: string | null) {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+function apiUrl(path: string) {
+  const origin = String(import.meta.env.VITE_API_ORIGIN || "").replace(/\/$/, "");
+  return origin ? origin + path : path;
+}
+
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
@@ -40,9 +45,11 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   headers.set("X-Device-Id", getDeviceId());
   let res: Response;
   try {
-    res = await fetch(path, { ...init, headers });
+    res = await fetch(apiUrl(path), { ...init, headers });
   } catch {
-    throw new Error("Нет связи с сервером. Запустите его на этом компьютере.");
+    throw new Error(import.meta.env.VITE_API_ORIGIN
+      ? "Нет связи с сервером. Проверьте интернет."
+      : "Нет связи с сервером. Запустите его на этом компьютере.");
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Ошибка сервера");

@@ -5,7 +5,12 @@ export type QrBill = {
 };
 
 function payOrigin() {
-  if (typeof location !== "undefined" && /^https?:$/.test(location.protocol)) return location.origin;
+  const fromEnv = String(import.meta.env.VITE_API_ORIGIN || "").replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+  if (typeof location !== "undefined" && /^https?:$/.test(location.protocol)) {
+    const host = location.hostname;
+    if (host !== "localhost" && host !== "127.0.0.1") return location.origin;
+  }
   return "https://alfa-koshelek-cr.fly.dev";
 }
 

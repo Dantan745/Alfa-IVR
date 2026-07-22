@@ -8,5 +8,6 @@ server/notify.json
 server/.env
 server/cloudflared.exe
 android
+shell
 .git
 *.log

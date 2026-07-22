@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Alfa Кошелёк ЦР</string>
+    <string name="title_activity_main">Alfa Кошелёк ЦР</string>
+    <string name="package_name">ru.alfacr.koshelek</string>
+    <string name="custom_url_scheme">ru.alfacr.koshelek</string>
+</resources>
