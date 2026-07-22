@@ -1,0 +1,66 @@
+{
+  "name": "alfa-koshelek-cr",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Alfa Кошелёк ЦР — устанавливаемое приложение",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "build:web": "npm --prefix ../web run build -- --mode app --base ./",
+    "sync:web": "node scripts/sync-www.mjs",
+    "cap:sync": "npm run build:web && npm run sync:web && cap sync",
+    "build:win": "npm run build:web && npm run sync:web && electron-builder --win nsis",
+    "build:mac": "npm run build:web && npm run sync:web && electron-builder --mac dmg",
+    "build:android": "npm run cap:sync && cd android && gradlew.bat assembleDebug",
+    "open:ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/core": "^7.4.3",
+    "@capacitor/ios": "^7.4.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.3",
+    "electron": "^35.7.5",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "ru.alfacr.koshelek",
+    "productName": "Alfa Koshelek CR",
+    "executableName": "AlfaKoshelekCR",
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "www/**/*",
+      "package.json"
+    ],
+    "asar": false,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "resources/icon.ico"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "resources/icon.png",
+      "category": "public.app-category.finance"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Alfa Кошелёк ЦР",
+      "uninstallDisplayName": "Alfa Кошелёк ЦР",
+      "artifactName": "AlfaKoshelekCR-Setup.${ext}"
+    },
+    "dmg": {
+      "artifactName": "AlfaKoshelekCR.${ext}"
+    }
+  }
+}

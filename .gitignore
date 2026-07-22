@@ -2,6 +2,16 @@ node_modules
 web/dist
 web/node_modules
 server/node_modules
+shell/node_modules
+shell/www
+shell/release
+shell/cache
+shell/android/app/build
+shell/android/build
+shell/android/.gradle
+shell/ios/App/Pods
+shell/ios/App/build
+shell/ios/DerivedData
 server/data.json
 server/notify.json
 server/.env
