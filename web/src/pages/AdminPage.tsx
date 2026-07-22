@@ -73,7 +73,7 @@ async function adminReq<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 function FraudMark({ label, score, ticks, bar }: { label?: string; score?: number | null; ticks?: number | null; bar?: number | null }) {
   if (label !== "Фрод" && label !== "Норма") {
-    return <span className="text-[rgba(185,202,203,0.45)]">нет оценки</span>;
+    return <span className="text-[var(--muted-45)]">нет оценки</span>;
   }
   const fraud = label === "Фрод";
   const exact = score != null && Number.isFinite(score) ? score : ticks != null ? Math.round(ticks) / 100 : null;
@@ -81,14 +81,14 @@ function FraudMark({ label, score, ticks, bar }: { label?: string; score?: numbe
   const fill = bar != null && Number.isFinite(bar) ? bar : shownTicks != null ? Math.min(100, Math.max(0, shownTicks)) : 0;
   return (
     <span className="inline-flex items-center gap-2 align-middle flex-wrap">
-      <span style={{ color: fraud ? "#FFB4AB" : "#48FFD5" }}>{label}</span>
-      {exact != null ? <span className="text-[rgba(185,202,203,0.7)]">{exact}</span> : null}
+      <span style={{ color: fraud ? "var(--danger)" : "var(--good)" }}>{label}</span>
+      {exact != null ? <span className="text-[var(--muted-70)]">{exact}</span> : null}
       {shownTicks != null ? (
         <>
           <span className="inline-block w-[72px] h-[6px] rounded-full bg-white/10 overflow-hidden shrink-0">
-            <span className="block h-full rounded-full" style={{ width: `${fill}%`, background: "linear-gradient(90deg,#00D2D3,#E8C07A)" }} />
+            <span className="block h-full rounded-full" style={{ width: `${fill}%`, background: "linear-gradient(90deg,var(--bar),#E8C07A)" }} />
           </span>
-          <span className="text-[rgba(185,202,203,0.55)]">{shownTicks > 100 ? String(shownTicks) : `${shownTicks}/100`}</span>
+          <span className="text-[var(--muted-55)]">{shownTicks > 100 ? String(shownTicks) : `${shownTicks}/100`}</span>
         </>
       ) : null}
     </span>
@@ -351,12 +351,12 @@ export default function AdminPage() {
   if (!ok) {
     return (
       <div className="admin-shell flex items-center justify-center p-6">
-        <form onSubmit={(e) => void login(e)} className="w-full max-w-sm rounded-[24px] p-6" style={{ background: "#191C1C" }}>
-          <p className="text-[#E0E0E0] text-[20px] mb-1">Кабинет разработчика</p>
-          <p className="text-[rgba(185,202,203,0.5)] text-[13px] mb-4">Ключ не сохраняется в браузере. Сессия кабинета живёт 12 часов.</p>
-          <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Ключ администратора" className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(63,78,79,0.7)] rounded-[14px] px-4 py-3 mb-3 outline-none" />
-          {err && <p className="text-[#FFB4AB] text-[13px] mb-2">{err}</p>}
-          <button className="w-full h-12 rounded-[14px] text-[#0B1A1A] font-medium" style={{ background: "linear-gradient(128deg,#00D2D3,#48FFD5)" }}>Войти</button>
+        <form onSubmit={(e) => void login(e)} className="w-full max-w-sm rounded-[24px] p-6" style={{ background: "var(--card)" }}>
+          <p className="text-[var(--ink)] text-[20px] mb-1">Кабинет разработчика</p>
+          <p className="text-[var(--muted-50)] text-[13px] mb-4">Ключ не сохраняется в браузере. Сессия кабинета живёт 12 часов.</p>
+          <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Ключ администратора" className="w-full bg-[var(--field)] border border-[var(--stroke)] rounded-[14px] px-4 py-3 mb-3 outline-none" />
+          {err && <p className="text-[var(--danger)] text-[13px] mb-2">{err}</p>}
+          <button className="w-full h-12 rounded-[14px] text-[#0B1A1A] font-medium" style={{ background: "linear-gradient(128deg,var(--fill),var(--fill-2))" }}>Войти</button>
         </form>
       </div>
     );
@@ -375,11 +375,11 @@ export default function AdminPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <div>
             <p className="text-[22px] font-medium">Админ-панель Alfa ЦР</p>
-            <p className="text-[13px] text-[rgba(185,202,203,0.5)]">{users.length} аккаунтов · перевод себе запрещён</p>
+            <p className="text-[13px] text-[var(--muted-50)]">{users.length} аккаунтов · перевод себе запрещён</p>
           </div>
           <div className="flex gap-2">
-            <a href="/" className="px-4 py-2 rounded-[12px] text-[13px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.1)" }}>Кошелёк</a>
-            <button onClick={() => { void adminReq("/api/admin/logout", { method: "POST" }).finally(() => setOk(false)); }} className="px-4 py-2 rounded-[12px] text-[13px] text-[rgba(185,202,203,0.7)]">Выйти</button>
+            <a href="/" className="px-4 py-2 rounded-[12px] text-[13px] text-[var(--accent)]" style={{ background: "rgba(0,210,211,0.1)" }}>Кошелёк</a>
+            <button onClick={() => { void adminReq("/api/admin/logout", { method: "POST" }).finally(() => setOk(false)); }} className="px-4 py-2 rounded-[12px] text-[13px] text-[var(--muted-70)]">Выйти</button>
           </div>
         </div>
 
@@ -391,8 +391,8 @@ export default function AdminPage() {
               onClick={() => setTab(t.id)}
               className="px-4 py-2 rounded-[12px] text-[13px] pressable"
               style={{
-                background: tab === t.id ? "rgba(0,210,211,0.18)" : "#191C1C",
-                color: tab === t.id ? "#00D2D3" : "rgba(185,202,203,0.7)",
+                background: tab === t.id ? "rgba(0,210,211,0.18)" : "var(--card)",
+                color: tab === t.id ? "var(--accent)" : "var(--muted-70)",
               }}
             >
               {t.label}
@@ -413,16 +413,16 @@ export default function AdminPage() {
                 ["Всего операций", String(overview?.txCount ?? 0)],
                 ["Новых за неделю", String(overview?.newWeek ?? 0)],
               ].map(([k, v]) => (
-                <div key={k} className="rounded-[16px] p-4" style={{ background: "#191C1C" }}>
-                  <p className="text-[12px] text-[rgba(185,202,203,0.5)]">{k}</p>
-                  <p className="text-[18px] sm:text-[20px] text-[#00D2D3] mt-1 leading-tight break-words">{v}</p>
+                <div key={k} className="rounded-[16px] p-4" style={{ background: "var(--card)" }}>
+                  <p className="text-[12px] text-[var(--muted-50)]">{k}</p>
+                  <p className="text-[18px] sm:text-[20px] text-[var(--accent)] mt-1 leading-tight break-words">{v}</p>
                 </div>
               ))}
             </div>
 
-            <div className="rounded-[20px] p-4 mb-4" style={{ background: "#191C1C" }}>
+            <div className="rounded-[20px] p-4 mb-4" style={{ background: "var(--card)" }}>
               <p className="text-[16px] font-medium mb-1">Код: Telegram и почта</p>
-              <p className="text-[12px] text-[rgba(185,202,203,0.5)] mb-3">
+              <p className="text-[12px] text-[var(--muted-50)] mb-3">
                 На телефон код приходит в Telegram. Бот {notify.telegram ? `@${notify.telegramBot || "подключён"}` : "не подключён"}. Почта {notify.email ? "включена" : "не настроена"}. SMS.ru оставлен запасным, если бота нет.
                 Для Mail.ru нужен пароль приложения, не пароль от ящика.
               </p>
@@ -437,24 +437,24 @@ export default function AdminPage() {
                 <input className="bg-black/30 rounded-[10px] px-3 py-2" placeholder="От кого (From)" value={notify.smtpFrom} onChange={(e) => setNotify({ ...notify, smtpFrom: e.target.value })} />
               </div>
               <div className="flex flex-wrap gap-2 mt-3">
-                <button type="button" className="px-3 py-2 rounded-[10px] text-[#0B1A1A]" style={{ background: "#00D2D3" }} onClick={() => void saveNotify().then(() => setNotifyMsg("Сохранено")).catch((e) => setNotifyMsg(e instanceof Error ? e.message : "Ошибка"))}>Сохранить каналы</button>
-                <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void saveNotify().then(() => adminReq("/api/admin/notify/test", { method: "POST", body: JSON.stringify({ channel: "email", email: notify.smtpUser }) })).then((d) => setNotifyMsg("Сохранено. Тест почты: " + JSON.stringify(d))).catch((e) => setNotifyMsg(e instanceof Error ? e.message : "Ошибка"))}>Тест письма</button>
-                <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => {
+                <button type="button" className="px-3 py-2 rounded-[10px] text-[#0B1A1A]" style={{ background: "var(--fill)" }} onClick={() => void saveNotify().then(() => setNotifyMsg("Сохранено")).catch((e) => setNotifyMsg(e instanceof Error ? e.message : "Ошибка"))}>Сохранить каналы</button>
+                <button type="button" className="px-3 py-2 rounded-[10px] text-[var(--accent)]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void saveNotify().then(() => adminReq("/api/admin/notify/test", { method: "POST", body: JSON.stringify({ channel: "email", email: notify.smtpUser }) })).then((d) => setNotifyMsg("Сохранено. Тест почты: " + JSON.stringify(d))).catch((e) => setNotifyMsg(e instanceof Error ? e.message : "Ошибка"))}>Тест письма</button>
+                <button type="button" className="px-3 py-2 rounded-[10px] text-[var(--accent)]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => {
                   const phone = prompt("Номер для тестовой СМС, формат +7 (9XX) XXX-XX-XX");
                   if (!phone) return;
                   void saveNotify().then(() => adminReq("/api/admin/notify/test", { method: "POST", body: JSON.stringify({ channel: "sms", phone }) })).then((d) => setNotifyMsg("Сохранено. Тест СМС: " + JSON.stringify(d))).catch((e) => setNotifyMsg(e instanceof Error ? e.message : "Ошибка"));
                 }}>Тест СМС</button>
               </div>
               {notifyMsg && (
-                <p className={`text-[12px] mt-2 ${/ошибк|не принял|неверн|535|парол/i.test(notifyMsg) ? "text-[#FFB4AB]" : "text-[#00D2D3]"}`}>
+                <p className={`text-[12px] mt-2 ${/ошибк|не принял|неверн|535|парол/i.test(notifyMsg) ? "text-[var(--danger)]" : "text-[var(--accent)]"}`}>
                   {notifyMsg}
                 </p>
               )}
             </div>
 
-            <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
+            <div className="rounded-[20px] p-4" style={{ background: "var(--card)" }}>
               <p className="text-[16px] font-medium mb-3">Журнал админа</p>
-              {(overview?.audit || []).length === 0 && <p className="text-[13px] text-[rgba(185,202,203,0.45)]">Пока пусто</p>}
+              {(overview?.audit || []).length === 0 && <p className="text-[13px] text-[var(--muted-45)]">Пока пусто</p>}
               {(overview?.audit || []).map((a) => (
                 <p key={a.id} className="text-[12px] py-1.5 border-b border-white/5">
                   {new Date(a.at).toLocaleString("ru-RU")} · {a.action} · {JSON.stringify(a.detail)}
@@ -466,37 +466,37 @@ export default function AdminPage() {
 
         {tab === "users" && (
           <>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск: ФИО, почта, телефон, ID" className="w-full mb-4 bg-[#191C1C] rounded-[14px] px-4 py-3 outline-none" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск: ФИО, почта, телефон, ID" className="w-full mb-4 bg-[var(--card)] rounded-[14px] px-4 py-3 outline-none" />
             <div className="grid md:grid-cols-[1.1fr_0.9fr] gap-4">
-              <div className="rounded-[20px] overflow-hidden" style={{ background: "#191C1C" }}>
+              <div className="rounded-[20px] overflow-hidden" style={{ background: "var(--card)" }}>
                 {filtered.map((u) => (
                   <button key={u.email} type="button" onClick={() => setSel(u.email)} className="w-full text-left px-4 py-3 border-b border-white/5" style={{ background: sel === u.email ? "rgba(0,210,211,0.08)" : "transparent" }}>
-                    <p className="text-[14px] font-medium">{u.lastName} {u.firstName} {u.middleName} {u.frozen ? <span className="text-[#FFB4AB] text-[11px]">ЗАМОРОЖЕН</span> : null}</p>
-                    <p className="text-[12px] text-[rgba(185,202,203,0.55)]">{u.email} · {u.phone}</p>
-                    <p className="text-[12px] text-[rgba(185,202,203,0.55)] mt-0.5">пароль хранится как хеш</p>
-                    <p className="text-[12px] text-[#00D2D3] mt-0.5">{u.balance.toLocaleString("ru-RU")} ₽ · операций {u.txCount}</p>
+                    <p className="text-[14px] font-medium">{u.lastName} {u.firstName} {u.middleName} {u.frozen ? <span className="text-[var(--danger)] text-[11px]">ЗАМОРОЖЕН</span> : null}</p>
+                    <p className="text-[12px] text-[var(--muted-55)]">{u.email} · {u.phone}</p>
+                    <p className="text-[12px] text-[var(--muted-55)] mt-0.5">пароль хранится как хеш</p>
+                    <p className="text-[12px] text-[var(--accent)] mt-0.5">{u.balance.toLocaleString("ru-RU")} ₽ · операций {u.txCount}</p>
                   </button>
                 ))}
-                {filtered.length === 0 && <p className="p-6 text-[13px] text-[rgba(185,202,203,0.45)]">Никого нет</p>}
+                {filtered.length === 0 && <p className="p-6 text-[13px] text-[var(--muted-45)]">Никого нет</p>}
               </div>
-              <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
+              <div className="rounded-[20px] p-4" style={{ background: "var(--card)" }}>
                 {!detail ? (
-                  <p className="text-[rgba(185,202,203,0.45)] text-[13px]">Выберите пользователя слева</p>
+                  <p className="text-[var(--muted-45)] text-[13px]">Выберите пользователя слева</p>
                 ) : (
                   <div className="flex flex-col gap-3 text-[13px]">
                     <p className="text-[16px] font-medium">{detail.user.lastName} {detail.user.firstName}</p>
                     <p>ID: {detail.user.walletId}</p>
                     <p>Паспорт: {detail.user.passport || "—"}</p>
-                    <p>Пароль: <span className="text-[#00D2D3]">хеш scrypt, открытый текст не хранится</span></p>
+                    <p>Пароль: <span className="text-[var(--accent)]">хеш scrypt, открытый текст не хранится</span></p>
                     <p>Создан: {new Date(detail.user.createdAt).toLocaleString("ru-RU")}</p>
-                    {detail.user.frozen && <p className="text-[#FFB4AB]">Заморожен: {detail.user.freezeReason || "да"}</p>}
-                    {detail.user.codePending && <p className="text-[rgba(185,202,203,0.7)]">Код подтверждения отправлен и ещё действует. Сам код на экране не показывается.</p>}
+                    {detail.user.frozen && <p className="text-[var(--danger)]">Заморожен: {detail.user.freezeReason || "да"}</p>}
+                    {detail.user.codePending && <p className="text-[var(--muted-70)]">Код подтверждения отправлен и ещё действует. Сам код на экране не показывается.</p>}
                     <label>Почта<input className="w-full mt-1 bg-black/30 rounded-[10px] px-3 py-2" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} /></label>
                     <label>Телефон<input className="w-full mt-1 bg-black/30 rounded-[10px] px-3 py-2" value={editPhone} onChange={(e) => setEditPhone(editPhoneMask(editPhone, e.target.value))} /></label>
                     <label className="block">
                       Пароль клиента
                       <input
-                        className="w-full mt-1 bg-black/30 rounded-[10px] px-3 py-2 text-[#00D2D3]"
+                        className="w-full mt-1 bg-black/30 rounded-[10px] px-3 py-2 text-[var(--accent)]"
                         value={editPass}
                         onChange={(e) => setEditPass(e.target.value)}
                         placeholder="новый пароль, от 8 символов"
@@ -506,47 +506,47 @@ export default function AdminPage() {
                     <label>Баланс ₽<input className="w-full mt-1 bg-black/30 rounded-[10px] px-3 py-2" value={editBal} onChange={(e) => setEditBal(e.target.value)} /></label>
                     <label>Корректировка ₽ (+/−)<input className="w-full mt-1 bg-black/30 rounded-[10px] px-3 py-2" value={adjust} onChange={(e) => setAdjust(e.target.value)} placeholder="например -500 или 1000" /></label>
                     <div className="flex flex-wrap gap-2">
-                      <button type="button" className="px-3 py-2 rounded-[10px] text-[#0B1A1A]" style={{ background: "#00D2D3" }} onClick={() => void adminReq("/api/admin/users/" + encodeURIComponent(detail.user.email), { method: "PATCH", body: JSON.stringify({ email: editEmail, phone: editPhone, balance: Number(editBal), password: editPass }) }).then(() => { void loadList(); setSel(editEmail.trim().toLowerCase()); })}>Сохранить</button>
-                      <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOp("adjust", { amount: Number(adjust), comment: "Ручная корректировка" })}>Провести корректировку</button>
+                      <button type="button" className="px-3 py-2 rounded-[10px] text-[#0B1A1A]" style={{ background: "var(--fill)" }} onClick={() => void adminReq("/api/admin/users/" + encodeURIComponent(detail.user.email), { method: "PATCH", body: JSON.stringify({ email: editEmail, phone: editPhone, balance: Number(editBal), password: editPass }) }).then(() => { void loadList(); setSel(editEmail.trim().toLowerCase()); })}>Сохранить</button>
+                      <button type="button" className="px-3 py-2 rounded-[10px] text-[var(--accent)]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOp("adjust", { amount: Number(adjust), comment: "Ручная корректировка" })}>Провести корректировку</button>
                       {detail.user.frozen ? (
-                        <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOp("unfreeze")}>Разморозить счёт</button>
+                        <button type="button" className="px-3 py-2 rounded-[10px] text-[var(--accent)]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOp("unfreeze")}>Разморозить счёт</button>
                       ) : (
-                        <button type="button" className="px-3 py-2 rounded-[10px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.1)" }} onClick={() => {
+                        <button type="button" className="px-3 py-2 rounded-[10px] text-[var(--danger)]" style={{ background: "rgba(255,180,171,0.1)" }} onClick={() => {
                           const reason = prompt("Причина заморозки счёта");
                           if (reason === null) return;
                           void userOp("freeze", { reason: reason.trim() || "Заморозка администратором: подозрение на мошенничество" });
                         }}>Заморозить счёт</button>
                       )}
-                      <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOp("kick")}>Сбросить сессии</button>
-                      <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => {
+                      <button type="button" className="px-3 py-2 rounded-[10px] text-[var(--accent)]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOp("kick")}>Сбросить сессии</button>
+                      <button type="button" className="px-3 py-2 rounded-[10px] text-[var(--accent)]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => {
                         const password = prompt("Новый пароль (от 8 символов)");
                         if (password) void userOp("password", { password });
                       }}>Сменить пароль</button>
-                      <button type="button" className="px-3 py-2 rounded-[10px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.1)" }} onClick={() => {
+                      <button type="button" className="px-3 py-2 rounded-[10px] text-[var(--danger)]" style={{ background: "rgba(255,180,171,0.1)" }} onClick={() => {
                         if (!confirm("Удалить пользователя и все его данные?")) return;
                         void adminReq("/api/admin/users/" + encodeURIComponent(detail.user.email), { method: "DELETE" }).then(() => { setSel(null); void loadList(); });
                       }}>Удалить</button>
                     </div>
-                    {actionMsg && <p className="text-[#00D2D3]">{actionMsg}</p>}
-                    <p className="uppercase text-[11px] tracking-wider text-[rgba(185,202,203,0.45)] mt-2">Операции</p>
+                    {actionMsg && <p className="text-[var(--accent)]">{actionMsg}</p>}
+                    <p className="uppercase text-[11px] tracking-wider text-[var(--muted-45)] mt-2">Операции</p>
                     <div className="max-h-48 overflow-y-auto">
                       {detail.txs.map((t) => (
                         <div key={t.id} className="py-1.5 border-b border-white/5">
-                          <p>{new Date(t.createdAt).toLocaleString("ru-RU")} · {t.name} · {money(t.amount)} · <FraudMark label={t.riskLabel} score={t.riskScoreExact} ticks={t.riskScore} bar={t.riskBar} /> {t.status === "held" ? <span className="text-[#FFB4AB]">ЗАМОРОЖЕНА</span> : t.status === "rejected" ? <span className="text-[#FFB4AB]">ОТКЛОНЕНА</span> : null}</p>
+                          <p>{new Date(t.createdAt).toLocaleString("ru-RU")} · {t.name} · {money(t.amount)} · <FraudMark label={t.riskLabel} score={t.riskScoreExact} ticks={t.riskScore} bar={t.riskBar} /> {t.status === "held" ? <span className="text-[var(--danger)]">ЗАМОРОЖЕНА</span> : t.status === "rejected" ? <span className="text-[var(--danger)]">ОТКЛОНЕНА</span> : null}</p>
                           <div className="flex flex-wrap gap-1 mt-1">
                             {t.status === "held" ? (
                               <>
-                                <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#0B1A1A]" style={{ background: "#00D2D3" }} onClick={() => void txOp(t.id, "release")}>Провести</button>
-                                <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(t.id, "reject")}>Вернуть</button>
+                                <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#0B1A1A]" style={{ background: "var(--fill)" }} onClick={() => void txOp(t.id, "release")}>Провести</button>
+                                <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[var(--danger)]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(t.id, "reject")}>Вернуть</button>
                               </>
                             ) : t.status !== "rejected" ? (
-                              <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(t.id, "hold", { reason: "Заморозка администратором" })}>Заморозить операцию</button>
+                              <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[var(--danger)]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(t.id, "hold", { reason: "Заморозка администратором" })}>Заморозить операцию</button>
                             ) : null}
                           </div>
                         </div>
                       ))}
                     </div>
-                    <p className="uppercase text-[11px] tracking-wider text-[rgba(185,202,203,0.45)]">Контакты</p>
+                    <p className="uppercase text-[11px] tracking-wider text-[var(--muted-45)]">Контакты</p>
                     {detail.contacts.map((c) => <p key={c.phone}>{c.name} · {c.phone}</p>)}
                   </div>
                 )}
@@ -556,8 +556,8 @@ export default function AdminPage() {
         )}
 
         {tab === "ops" && (
-          <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
-            {actionMsg && <p className="text-[#00D2D3] text-[13px] mb-2">{actionMsg}</p>}
+          <div className="rounded-[20px] p-4" style={{ background: "var(--card)" }}>
+            {actionMsg && <p className="text-[var(--accent)] text-[13px] mb-2">{actionMsg}</p>}
             <div className="flex flex-wrap gap-2 mb-3">
               <input value={opsQ} onChange={(e) => setOpsQ(e.target.value)} placeholder="Поиск по почте, имени, получателю" className="flex-1 min-w-[200px] bg-black/30 rounded-[10px] px-3 py-2 text-[13px] outline-none" />
               <select value={opsType} onChange={(e) => setOpsType(e.target.value)} className="bg-black/30 rounded-[10px] px-3 py-2 text-[13px]">
@@ -567,53 +567,53 @@ export default function AdminPage() {
                 <option value="held">Замороженные</option>
                 <option value="rejected">Отклонённые</option>
               </select>
-              <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3] text-[13px]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void adminReq<{ rows: unknown[] }>("/api/admin/export?kind=txs").then((d) => downloadJson("txs.json", d.rows))}>Экспорт JSON</button>
+              <button type="button" className="px-3 py-2 rounded-[10px] text-[var(--accent)] text-[13px]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void adminReq<{ rows: unknown[] }>("/api/admin/export?kind=txs").then((d) => downloadJson("txs.json", d.rows))}>Экспорт JSON</button>
             </div>
             <div className="max-h-[70vh] overflow-y-auto text-[13px]">
               {ops.map((t) => (
                 <div key={t.id} className="py-2 border-b border-white/5">
                   <p>
-                    <span className="text-[rgba(185,202,203,0.5)]">{new Date(t.createdAt).toLocaleString("ru-RU")}</span>
+                    <span className="text-[var(--muted-50)]">{new Date(t.createdAt).toLocaleString("ru-RU")}</span>
                     {" · "}
-                    <span className="text-[#00D2D3]">{t.email}</span>
+                    <span className="text-[var(--accent)]">{t.email}</span>
                     {" · "}
-                    {t.name} · <span style={{ color: t.amount < 0 ? "#FFB4AB" : "#48FFD5" }}>{money(t.amount)}</span>
+                    {t.name} · <span style={{ color: t.amount < 0 ? "var(--danger)" : "var(--good)" }}>{money(t.amount)}</span>
                     {t.counterparty ? ` · ${t.counterparty}` : ""}
-                    {t.status === "held" ? <span className="text-[#FFB4AB]"> · ЗАМОРОЖЕНА</span> : null}
-                    {t.status === "rejected" ? <span className="text-[#FFB4AB]"> · ОТКЛОНЕНА</span> : null}
+                    {t.status === "held" ? <span className="text-[var(--danger)]"> · ЗАМОРОЖЕНА</span> : null}
+                    {t.status === "rejected" ? <span className="text-[var(--danger)]"> · ОТКЛОНЕНА</span> : null}
                     {" · "}
                     <FraudMark label={t.riskLabel} score={t.riskScoreExact} ticks={t.riskScore} bar={t.riskBar} />
                   </p>
                   <div className="flex flex-wrap gap-1 mt-1">
                     {t.status === "held" ? (
                       <>
-                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#0B1A1A]" style={{ background: "#00D2D3" }} onClick={() => void txOp(t.id, "release")}>Провести</button>
-                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(t.id, "reject")}>Вернуть</button>
-                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOpEmail(t.email, "unfreeze")}>Разморозить счёт</button>
+                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#0B1A1A]" style={{ background: "var(--fill)" }} onClick={() => void txOp(t.id, "release")}>Провести</button>
+                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[var(--danger)]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(t.id, "reject")}>Вернуть</button>
+                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[var(--accent)]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOpEmail(t.email, "unfreeze")}>Разморозить счёт</button>
                       </>
                     ) : t.status !== "rejected" ? (
-                      <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(t.id, "hold", { reason: "Заморозка администратором: подозрение на мошенничество" })}>Заморозить счёт и операцию</button>
+                      <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[var(--danger)]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(t.id, "hold", { reason: "Заморозка администратором: подозрение на мошенничество" })}>Заморозить счёт и операцию</button>
                     ) : null}
                   </div>
                 </div>
               ))}
-              {ops.length === 0 && <p className="text-[rgba(185,202,203,0.45)] py-6">Нет операций</p>}
+              {ops.length === 0 && <p className="text-[var(--muted-45)] py-6">Нет операций</p>}
             </div>
           </div>
         )}
 
         {tab === "ml" && (
           <div className="flex flex-col gap-4">
-            <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
+            <div className="rounded-[20px] p-4" style={{ background: "var(--card)" }}>
               <p className="text-[16px] font-medium">Как считается оценка</p>
-              <p className="text-[13px] text-[rgba(185,202,203,0.7)] mt-2 leading-relaxed">
-                Рядом с операцией два поля модели. <b className="text-[#FFB4AB]">Фрод / Норма</b> берётся только из <b>anomaly</b>: ниже порога 0.71 — Норма, от 0.71 — Фрод и платёж отклоняется. Число — <b>round(final_score × 100) / 100</b>, это не вероятность. Шкала — <b>min(100, round(final_score × 100))</b>; если скор выше 1, число на экране больше 100, полоска упирается в 100. 66/100 ещё может быть Норма, 71/100 — уже Фрод, если так сказала метка. Клиенту ни метка, ни число не отдаются.
+              <p className="text-[13px] text-[var(--muted-70)] mt-2 leading-relaxed">
+                Рядом с операцией два поля модели. <b className="text-[var(--danger)]">Фрод / Норма</b> берётся только из <b>anomaly</b>: ниже порога 0.71 — Норма, от 0.71 — Фрод и платёж отклоняется. Число — <b>round(final_score × 100) / 100</b>, это не вероятность. Шкала — <b>min(100, round(final_score × 100))</b>; если скор выше 1, число на экране больше 100, полоска упирается в 100. 66/100 ещё может быть Норма, 71/100 — уже Фрод, если так сказала метка. Клиенту ни метка, ни число не отдаются.
               </p>
-              <p className="text-[12px] text-[#00D2D3] mt-2">{mlMsg}</p>
+              <p className="text-[12px] text-[var(--accent)] mt-2">{mlMsg}</p>
 
               <div className="mt-4">
                 <p className="text-[14px] font-medium mb-2">Фичи, используемые для обучения модели антифрода</p>
-                <ol className="text-[13px] text-[rgba(185,202,203,0.8)] list-decimal pl-5 space-y-1">
+                <ol className="text-[13px] text-[var(--muted-80)] list-decimal pl-5 space-y-1">
                   {(ml?.features?.fraudFeatures || [
                     { name: "log_amount", desc: "log1p от абсолютной суммы операции" },
                     { name: "amount_to_avg_ratio", desc: "во сколько раз операция превышает средний чек счёта" },
@@ -625,22 +625,22 @@ export default function AdminPage() {
                     { name: "is_new_device", desc: "пара аккаунт и устройство встретилась впервые" },
                     { name: "amount_to_balance", desc: "сумма операции, делённая на баланс до проводки" },
                   ]).map((f) => (
-                    <li key={f.name}><code className="text-[#00D2D3]">{f.name}</code> — {f.desc}</li>
+                    <li key={f.name}><code className="text-[var(--accent)]">{f.name}</code> — {f.desc}</li>
                   ))}
                 </ol>
               </div>
               <div className="flex flex-wrap gap-2 mt-3">
-                <button type="button" className="px-3 py-2 rounded-[10px] text-[#0B1A1A] text-[13px]" style={{ background: "#00D2D3" }} onClick={() => void adminReq<MlReport>("/api/admin/ml").then(setMl)}>Пересчитать</button>
-                <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3] text-[13px]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void adminReq("/api/admin/ml/features").then((d) => downloadJson("ml-features.json", d))}>Скачать фичи</button>
-                <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3] text-[13px]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void adminReq<{ rows: unknown[] }>("/api/admin/export?kind=users").then((d) => downloadJson("users.json", d.rows))}>Экспорт клиентов</button>
+                <button type="button" className="px-3 py-2 rounded-[10px] text-[#0B1A1A] text-[13px]" style={{ background: "var(--fill)" }} onClick={() => void adminReq<MlReport>("/api/admin/ml").then(setMl)}>Пересчитать</button>
+                <button type="button" className="px-3 py-2 rounded-[10px] text-[var(--accent)] text-[13px]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void adminReq("/api/admin/ml/features").then((d) => downloadJson("ml-features.json", d))}>Скачать фичи</button>
+                <button type="button" className="px-3 py-2 rounded-[10px] text-[var(--accent)] text-[13px]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void adminReq<{ rows: unknown[] }>("/api/admin/export?kind=users").then((d) => downloadJson("users.json", d.rows))}>Экспорт клиентов</button>
               </div>
             </div>
 
             {ml && (
               <>
-                <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
+                <div className="rounded-[20px] p-4" style={{ background: "var(--card)" }}>
                   <p className="text-[14px] font-medium mb-1">Оборот: факт (7 дн.) и прогноз ({ml.horizonDays} дн.)</p>
-                  <p className="text-[12px] text-[rgba(185,202,203,0.55)] mb-3">
+                  <p className="text-[12px] text-[var(--muted-55)] mb-3">
                     Сегодня: {money((ml.today?.volumeOut || 0) + (ml.today?.volumeIn || 0))} · списания {money(ml.today?.volumeOut || 0)} · пополнения {money(ml.today?.volumeIn || 0)} · операций {ml.today?.txCount || 0}
                   </p>
                   <div className="flex items-end gap-1 h-36">
@@ -651,13 +651,13 @@ export default function AdminPage() {
                       const h = Math.max(6, Math.round((val / max) * 120));
                       return (
                         <div key={f.date} className="flex-1 flex flex-col items-center justify-end">
-                          <div className="w-full rounded-t-[6px]" style={{ height: h, background: f.actual ? "linear-gradient(#00D2D3,#48FFD5)" : "linear-gradient(#3d5c5c,#6aa8a8)" }} />
-                          <p className="text-[9px] text-[rgba(185,202,203,0.5)] mt-1">{f.date.slice(5)}</p>
+                          <div className="w-full rounded-t-[6px]" style={{ height: h, background: f.actual ? "linear-gradient(var(--fill),var(--fill-2))" : "linear-gradient(#3d5c5c,#6aa8a8)" }} />
+                          <p className="text-[9px] text-[var(--muted-50)] mt-1">{f.date.slice(5)}</p>
                         </div>
                       );
                     })}
                   </div>
-                  <div className="mt-3 text-[12px] text-[rgba(185,202,203,0.7)]">
+                  <div className="mt-3 text-[12px] text-[var(--muted-70)]">
                     {(ml.history || []).map((f) => (
                       <span key={f.date} className="mr-3">{f.date}: {money(f.volume ?? 0)} факт</span>
                     ))}
@@ -667,13 +667,13 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
+                <div className="rounded-[20px] p-4" style={{ background: "var(--card)" }}>
                   <p className="text-[14px] font-medium mb-2">Все операции · новые сверху</p>
-                  {(ml.scored || []).length === 0 && <p className="text-[13px] text-[rgba(185,202,203,0.45)]">Пока нет операций</p>}
+                  {(ml.scored || []).length === 0 && <p className="text-[13px] text-[var(--muted-45)]">Пока нет операций</p>}
                   {(ml.scored || []).slice(0, 40).map((a) => (
                     <div key={a.id} className="text-[12px] py-1.5 border-b border-white/5">
                       <p>
-                        <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
+                        <span className="text-[var(--muted-50)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
                         {" · "}
                         <FraudMark label={a.label} score={a.scoreExact} ticks={a.score} bar={a.scoreBar} />
                         {" · "}
@@ -684,22 +684,22 @@ export default function AdminPage() {
                   ))}
                 </div>
 
-                <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
+                <div className="rounded-[20px] p-4" style={{ background: "var(--card)" }}>
                   <p className="text-[14px] font-medium mb-2">Фрод · anomaly = 1</p>
-                  {ml.anomalies.length === 0 && <p className="text-[13px] text-[rgba(185,202,203,0.45)]">Модель не пометила ни одной операции</p>}
+                  {ml.anomalies.length === 0 && <p className="text-[13px] text-[var(--muted-45)]">Модель не пометила ни одной операции</p>}
                   {ml.anomalies.slice(0, 40).map((a) => (
                     <div key={a.id} className="text-[12px] py-1.5 border-b border-white/5">
                       <p>
-                        <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
+                        <span className="text-[var(--muted-50)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
                         {" · "}
                         <FraudMark label={a.label} score={a.scoreExact} ticks={a.score} bar={a.scoreBar} />
                         {" · "}
                         {a.email} · {money(a.amount)}
                       </p>
                       <div className="flex flex-wrap gap-1 mt-1">
-                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(a.id, "hold", { reason: "Антифрод: подозрение на мошенничество" })}>Заморозить</button>
-                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#0B1A1A]" style={{ background: "#00D2D3" }} onClick={() => void txOp(a.id, "release")}>Провести</button>
-                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOpEmail(a.email, "unfreeze")}>Разморозить счёт</button>
+                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[var(--danger)]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(a.id, "hold", { reason: "Антифрод: подозрение на мошенничество" })}>Заморозить</button>
+                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#0B1A1A]" style={{ background: "var(--fill)" }} onClick={() => void txOp(a.id, "release")}>Провести</button>
+                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[var(--accent)]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOpEmail(a.email, "unfreeze")}>Разморозить счёт</button>
                       </div>
                     </div>
                   ))}

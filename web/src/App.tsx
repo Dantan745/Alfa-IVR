@@ -73,7 +73,7 @@ export default function App() {
     return (
       <Frame>
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-[#00D2D3] text-sm">Загрузка кошелька…</p>
+          <p className="text-[var(--accent)] text-sm">Загрузка кошелька…</p>
         </div>
       </Frame>
     );
@@ -140,7 +140,7 @@ export default function App() {
         </div>
         {toast && (
           <div className="absolute left-4 right-4 z-30 rounded-[16px] px-4 py-3 text-center text-[13px] text-[#0B1A1A] page-enter bottom-[calc(5.5rem+env(safe-area-inset-bottom))] md:left-auto md:right-8 md:bottom-8 md:w-[320px]">
-            <span className="block rounded-[16px] px-4 py-3" style={{ background: "#00D2D3" }}>{toast}</span>
+            <span className="block rounded-[16px] px-4 py-3" style={{ background: "var(--fill)" }}>{toast}</span>
           </div>
         )}
       </div>

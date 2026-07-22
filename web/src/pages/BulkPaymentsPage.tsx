@@ -120,10 +120,10 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
   return (
     <div className="flex-1 overflow-y-auto relative">
       <div className="flex items-center px-4 pt-4 pb-3 gap-3">
-        <button onClick={onBack} className="w-10 h-10 rounded-full bg-[#191C1C] flex items-center justify-center">
-          <span className="material-symbols-outlined text-[#00D2D3]">arrow_back</span>
+        <button onClick={onBack} className="w-10 h-10 rounded-full bg-[var(--card)] flex items-center justify-center">
+          <span className="material-symbols-outlined text-[var(--accent)]">arrow_back</span>
         </button>
-        <p className="text-[#E0E0E0] text-[20px] font-medium">Массовые платежи</p>
+        <p className="text-[var(--ink)] text-[20px] font-medium">Массовые платежи</p>
       </div>
 
       <div className="px-4 mb-4">
@@ -138,25 +138,25 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
           }}
           className="border-2 border-dashed rounded-[24px] p-5 flex flex-col items-center gap-2"
           style={{
-            borderColor: dragOver ? "#00D2D3" : "rgba(63,78,79,0.5)",
-            background: dragOver ? "rgba(0,210,211,0.05)" : "rgba(255,255,255,0.02)",
+            borderColor: dragOver ? "var(--accent)" : "var(--stroke-soft)",
+            background: dragOver ? "rgba(0,210,211,0.05)" : "var(--hover)",
           }}
         >
-          <span className="material-symbols-outlined text-[#00D2D3] text-[28px]">upload_file</span>
-          <p className="text-[#E0E0E0] text-[15px]">CSV: телефон, имя, сумма</p>
+          <span className="material-symbols-outlined text-[var(--accent)] text-[28px]">upload_file</span>
+          <p className="text-[var(--ink)] text-[15px]">CSV: телефон, имя, сумма</p>
           <input ref={fileRef} type="file" accept=".csv,text/csv,text/plain" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
           <div className="flex flex-wrap gap-2 mt-1">
-            <button type="button" onClick={() => fileRef.current?.click()} className="px-4 py-2 rounded-[14px] text-[13px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.1)", border: "1px solid rgba(0,210,211,0.3)" }}>Выбрать файл</button>
-            <button type="button" onClick={() => setPick((v) => !v)} className="px-4 py-2 rounded-[14px] text-[13px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.1)", border: "1px solid rgba(0,210,211,0.3)" }}>Из адресной книги</button>
+            <button type="button" onClick={() => fileRef.current?.click()} className="px-4 py-2 rounded-[14px] text-[13px] text-[var(--accent)]" style={{ background: "rgba(0,210,211,0.1)", border: "1px solid rgba(0,210,211,0.3)" }}>Выбрать файл</button>
+            <button type="button" onClick={() => setPick((v) => !v)} className="px-4 py-2 rounded-[14px] text-[13px] text-[var(--accent)]" style={{ background: "rgba(0,210,211,0.1)", border: "1px solid rgba(0,210,211,0.3)" }}>Из адресной книги</button>
           </div>
         </div>
       </div>
 
       {pick && (
-        <div className="mx-4 mb-4 p-4 rounded-[20px]" style={{ background: "#191C1C" }}>
-          <p className="text-[#E0E0E0] text-[14px] mb-2">Ваши получатели</p>
+        <div className="mx-4 mb-4 p-4 rounded-[20px]" style={{ background: "var(--card)" }}>
+          <p className="text-[var(--ink)] text-[14px] mb-2">Ваши получатели</p>
           {contacts.length === 0 ? (
-            <p className="text-[rgba(185,202,203,0.5)] text-[13px]">Адресная книга пуста — добавьте контакты сами</p>
+            <p className="text-[var(--muted-50)] text-[13px]">Адресная книга пуста — добавьте контакты сами</p>
           ) : (
             <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
               {contacts.map((c) => {
@@ -170,10 +170,10 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
                       else addRows([{ name: c.name, phone: c.phone, amount: "" }]);
                     }}
                     className="flex items-center justify-between px-3 py-2 rounded-[12px] text-left"
-                    style={{ background: on ? "rgba(0,210,211,0.12)" : "rgba(255,255,255,0.03)" }}
+                    style={{ background: on ? "rgba(0,210,211,0.12)" : "var(--chip)" }}
                   >
-                    <span className="text-[#E0E0E0] text-[13px]">{c.name}<span className="block text-[11px] text-[rgba(185,202,203,0.45)]">{c.phone}</span></span>
-                    <span className="material-symbols-outlined text-[#00D2D3] text-[18px]">{on ? "check_circle" : "add_circle"}</span>
+                    <span className="text-[var(--ink)] text-[13px]">{c.name}<span className="block text-[11px] text-[var(--muted-45)]">{c.phone}</span></span>
+                    <span className="material-symbols-outlined text-[var(--accent)] text-[18px]">{on ? "check_circle" : "add_circle"}</span>
                   </button>
                 );
               })}
@@ -182,11 +182,11 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
         </div>
       )}
 
-      <div className="mx-4 mb-4 p-4 rounded-[20px]" style={{ background: "#191C1C" }}>
-        <p className="text-[#E0E0E0] text-[14px] mb-3">Добавить вручную</p>
-        <input value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })} placeholder="Имя" className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(63,78,79,0.7)] rounded-[12px] px-3 py-2 mb-2 outline-none text-[14px]" />
-        <input value={manual.phone} onChange={(e) => setManual({ ...manual, phone: editPhoneMask(manual.phone, e.target.value) })} placeholder="+7 926… / 8 926…" className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(63,78,79,0.7)] rounded-[12px] px-3 py-2 mb-2 outline-none text-[14px]" />
-        <input value={manual.amount} onChange={(e) => setManual({ ...manual, amount: e.target.value.replace(/[^\d.,]/g, "") })} placeholder="Сумма ₽" inputMode="decimal" className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(63,78,79,0.7)] rounded-[12px] px-3 py-2 mb-3 outline-none text-[14px]" />
+      <div className="mx-4 mb-4 p-4 rounded-[20px]" style={{ background: "var(--card)" }}>
+        <p className="text-[var(--ink)] text-[14px] mb-3">Добавить вручную</p>
+        <input value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })} placeholder="Имя" className="w-full bg-[var(--field)] border border-[var(--stroke)] rounded-[12px] px-3 py-2 mb-2 outline-none text-[14px]" />
+        <input value={manual.phone} onChange={(e) => setManual({ ...manual, phone: editPhoneMask(manual.phone, e.target.value) })} placeholder="+7 926… / 8 926…" className="w-full bg-[var(--field)] border border-[var(--stroke)] rounded-[12px] px-3 py-2 mb-2 outline-none text-[14px]" />
+        <input value={manual.amount} onChange={(e) => setManual({ ...manual, amount: e.target.value.replace(/[^\d.,]/g, "") })} placeholder="Сумма ₽" inputMode="decimal" className="w-full bg-[var(--field)] border border-[var(--stroke)] rounded-[12px] px-3 py-2 mb-3 outline-none text-[14px]" />
         <button
           type="button"
           onClick={() => {
@@ -199,39 +199,39 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
             setMsg("");
           }}
           className="w-full py-2.5 rounded-[12px] text-[13px] text-[#0B1A1A]"
-          style={{ background: "linear-gradient(128deg, #00D2D3, #48FFD5)" }}
+          style={{ background: "linear-gradient(128deg, var(--fill), var(--fill-2))" }}
         >
           Добавить в список
         </button>
       </div>
 
       <div className="flex gap-3 px-4 mb-4">
-        <div className="flex-1 px-4 py-3 rounded-[18px]" style={{ background: "#191C1C" }}>
-          <p className="text-[rgba(185,202,203,0.5)] text-[10px] uppercase tracking-[1px]">Получателей</p>
-          <p className="text-[#E0E0E0] text-[22px] font-bold mt-1">{rows.length}</p>
+        <div className="flex-1 px-4 py-3 rounded-[18px]" style={{ background: "var(--card)" }}>
+          <p className="text-[var(--muted-50)] text-[10px] uppercase tracking-[1px]">Получателей</p>
+          <p className="text-[var(--ink)] text-[22px] font-bold mt-1">{rows.length}</p>
         </div>
-        <div className="flex-1 px-4 py-3 rounded-[18px]" style={{ background: "#191C1C" }}>
-          <p className="text-[rgba(185,202,203,0.5)] text-[10px] uppercase tracking-[1px]">Итого</p>
-          <p className="text-[#00D2D3] text-[22px] font-bold mt-1">{total.toLocaleString("ru-RU")} ₽</p>
+        <div className="flex-1 px-4 py-3 rounded-[18px]" style={{ background: "var(--card)" }}>
+          <p className="text-[var(--muted-50)] text-[10px] uppercase tracking-[1px]">Итого</p>
+          <p className="text-[var(--accent)] text-[22px] font-bold mt-1">{total.toLocaleString("ru-RU")} ₽</p>
         </div>
       </div>
 
       <div className="px-4 mb-5">
-        <p className="text-[rgba(185,202,203,0.5)] text-[11px] uppercase tracking-[1px] mb-3">Список платежей</p>
-        <div className="rounded-[24px] overflow-hidden" style={{ background: "#191C1C" }}>
+        <p className="text-[var(--muted-50)] text-[11px] uppercase tracking-[1px] mb-3">Список платежей</p>
+        <div className="rounded-[24px] overflow-hidden" style={{ background: "var(--card)" }}>
           {rows.length === 0 && (
-            <p className="text-center text-[rgba(185,202,203,0.45)] text-[13px] py-8 px-4">Список пуст. Добавьте людей из своей адресной книги, вручную или CSV.</p>
+            <p className="text-center text-[var(--muted-45)] text-[13px] py-8 px-4">Список пуст. Добавьте людей из своей адресной книги, вручную или CSV.</p>
           )}
           {rows.map((r, i) => (
-            <div key={r.id} className="flex items-center gap-2 px-3 py-3" style={{ borderBottom: i < rows.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+            <div key={r.id} className="flex items-center gap-2 px-3 py-3" style={{ borderBottom: i < rows.length - 1 ? "1px solid var(--line)" : "none" }}>
               <div className="flex-1 min-w-0">
-                <input value={r.name} onChange={(e) => setRows((p) => p.map((x) => x.id === r.id ? { ...x, name: e.target.value, status: "pending" } : x))} className="w-full bg-transparent text-[#E0E0E0] text-[13px] outline-none" />
-                <input value={r.phone} onChange={(e) => setRows((p) => p.map((x) => x.id === r.id ? { ...x, phone: maskPhone(e.target.value), status: "pending" } : x))} className="w-full bg-transparent text-[11px] text-[rgba(185,202,203,0.5)] outline-none" />
+                <input value={r.name} onChange={(e) => setRows((p) => p.map((x) => x.id === r.id ? { ...x, name: e.target.value, status: "pending" } : x))} className="w-full bg-transparent text-[var(--ink)] text-[13px] outline-none" />
+                <input value={r.phone} onChange={(e) => setRows((p) => p.map((x) => x.id === r.id ? { ...x, phone: maskPhone(e.target.value), status: "pending" } : x))} className="w-full bg-transparent text-[11px] text-[var(--muted-50)] outline-none" />
               </div>
-              <input value={r.amount} onChange={(e) => setRows((p) => p.map((x) => x.id === r.id ? { ...x, amount: e.target.value.replace(/[^\d.,]/g, ""), status: "pending" } : x))} className="w-[72px] bg-transparent text-right text-[#E0E0E0] text-[13px] outline-none" />
-              <span className="text-[rgba(185,202,203,0.4)] text-[12px]">₽</span>
-              {r.status === "success" ? <span className="material-symbols-outlined text-[#228D57] text-[18px]">check_circle</span> : (parsed.find((p) => p.id === r.id)?.error || r.status === "error") ? <span className="material-symbols-outlined text-[#FFB4AB] text-[18px]">error</span> : <span className="material-symbols-outlined text-[rgba(185,202,203,0.3)] text-[18px]">radio_button_unchecked</span>}
-              <button type="button" onClick={() => setRows((p) => p.filter((x) => x.id !== r.id))} className="text-[rgba(185,202,203,0.35)]">
+              <input value={r.amount} onChange={(e) => setRows((p) => p.map((x) => x.id === r.id ? { ...x, amount: e.target.value.replace(/[^\d.,]/g, ""), status: "pending" } : x))} className="w-[72px] bg-transparent text-right text-[var(--ink)] text-[13px] outline-none" />
+              <span className="text-[var(--muted-40)] text-[12px]">₽</span>
+              {r.status === "success" ? <span className="material-symbols-outlined text-[#228D57] text-[18px]">check_circle</span> : (parsed.find((p) => p.id === r.id)?.error || r.status === "error") ? <span className="material-symbols-outlined text-[var(--danger)] text-[18px]">error</span> : <span className="material-symbols-outlined text-[var(--muted-30)] text-[18px]">radio_button_unchecked</span>}
+              <button type="button" onClick={() => setRows((p) => p.filter((x) => x.id !== r.id))} className="text-[var(--muted-35)]">
                 <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
             </div>
@@ -240,13 +240,13 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
       </div>
 
       <div className="px-4 pb-8">
-        {msg && <p className="text-[13px] mb-3" style={{ color: sent && !errorCount ? "#228D57" : "#FFB4AB" }}>{msg}</p>}
+        {msg && <p className="text-[13px] mb-3" style={{ color: sent && !errorCount ? "#228D57" : "var(--danger)" }}>{msg}</p>}
         <button
           onClick={() => void handleSend()}
           disabled={sending || !valid.length}
           className="w-full rounded-[17px] h-[52px] font-medium text-[16px]"
           style={{
-            background: sending || !valid.length ? "#2A3A3C" : "linear-gradient(128deg, #00D2D3 0%, #48FFD5 51%, #00D2D3 100%)",
+            background: sending || !valid.length ? "var(--avatar-from)" : "linear-gradient(128deg, var(--fill) 0%, var(--fill-2) 51%, var(--fill) 100%)",
             color: sending || !valid.length ? "#668" : "#0B1A1A",
           }}
         >

@@ -19,28 +19,28 @@ export default function PaymentsPage({ onNavigate }: PaymentsPageProps) {
 
   return (
     <div className="flex-1 overflow-y-auto pb-4 px-4 sm:px-6 pt-4 max-w-[920px] mx-auto w-full">
-      <p className="text-[#E0E0E0] text-[22px] font-medium mb-5">Платежи</p>
+      <p className="text-[var(--ink)] text-[22px] font-medium mb-5">Платежи</p>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
         {services.map((s) => (
           <button
             key={s.page}
             onClick={() => onNavigate(s.page)}
             className="p-4 rounded-[24px] text-left flex flex-col gap-2 pressable"
-            style={{ background: "#191C1C" }}
+            style={{ background: "var(--card)" }}
           >
             <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,210,211,0.1)" }}>
-              <span className="material-symbols-outlined text-[#00D2D3] text-[22px]">{s.icon}</span>
+              <span className="material-symbols-outlined text-[var(--accent)] text-[22px]">{s.icon}</span>
             </div>
-            <p className="text-[#E0E0E0] text-[13px] font-medium leading-tight">{s.label}</p>
-            <p className="text-[rgba(185,202,203,0.45)] text-[11px]">{s.desc}</p>
+            <p className="text-[var(--ink)] text-[13px] font-medium leading-tight">{s.label}</p>
+            <p className="text-[var(--muted-45)] text-[11px]">{s.desc}</p>
           </button>
         ))}
       </div>
 
-      <p className="text-[#E0E0E0] text-[17px] font-medium mb-3">Последние платежи</p>
-      <div className="rounded-[24px] overflow-hidden" style={{ background: "#191C1C" }}>
+      <p className="text-[var(--ink)] text-[17px] font-medium mb-3">Последние платежи</p>
+      <div className="rounded-[24px] overflow-hidden" style={{ background: "var(--card)" }}>
         {recent.length === 0 ? (
-          <p className="text-center text-[rgba(185,202,203,0.45)] text-[13px] py-10 px-4">
+          <p className="text-center text-[var(--muted-45)] text-[13px] py-10 px-4">
             Операций ещё нет — сделайте перевод или пополнение
           </p>
         ) : (
@@ -50,16 +50,16 @@ export default function PaymentsPage({ onNavigate }: PaymentsPageProps) {
               key={r.id}
               onClick={() => onNavigate("tx", r.id)}
               className="w-full flex items-center gap-3 px-4 py-4 text-left pressable"
-              style={{ borderBottom: i < recent.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}
+              style={{ borderBottom: i < recent.length - 1 ? "1px solid var(--line)" : "none" }}
             >
-              <div className="w-10 h-10 rounded-full bg-[#282A2A] flex items-center justify-center">
-                <span className="material-symbols-outlined text-[#00D2D3] text-[18px]">{r.icon}</span>
+              <div className="w-10 h-10 rounded-full bg-[var(--raised)] flex items-center justify-center">
+                <span className="material-symbols-outlined text-[var(--accent)] text-[18px]">{r.icon}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[#E0E0E0] text-[14px] font-medium truncate">{r.name}</p>
-                <p className="text-[rgba(185,202,203,0.5)] text-[12px]">{formatTxDate(r.createdAt)}</p>
+                <p className="text-[var(--ink)] text-[14px] font-medium truncate">{r.name}</p>
+                <p className="text-[var(--muted-50)] text-[12px]">{formatTxDate(r.createdAt)}</p>
               </div>
-              <span className="text-[14px] font-medium" style={{ color: r.type === "income" ? "#228D57" : "#FFB4AB" }}>
+              <span className="text-[14px] font-medium" style={{ color: r.type === "income" ? "#228D57" : "var(--danger)" }}>
                 {r.amount > 0 ? `+${formatRub(r.amount)} ₽` : `−${formatRub(Math.abs(r.amount))} ₽`}
               </span>
             </button>
