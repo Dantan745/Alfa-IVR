@@ -51,26 +51,26 @@ export default function HomePage({ onNavigate }: HomePageProps) {
         <div className="flex items-center gap-3">
           <div
             className="w-[44px] h-[44px] rounded-full flex items-center justify-center"
-            style={{ background: "linear-gradient(#2A3A3C, #1A2426)" }}
+            style={{ background: "linear-gradient(var(--avatar-from), var(--avatar-to))" }}
           >
-            <span className="text-[#E0E0E0] text-[18px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>{user?.firstName.charAt(0) || "И"}</span>
+            <span className="text-[var(--ink)] text-[18px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>{user?.firstName.charAt(0) || "И"}</span>
           </div>
           <div>
-            <p className="text-[#E0E0E0] text-[20px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+            <p className="text-[var(--ink)] text-[20px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
               {greetingByHour(now)}, {user?.firstName || "Иван"}
             </p>
-            <p className="text-[rgba(185,202,203,0.6)] text-[12px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+            <p className="text-[var(--muted-60)] text-[12px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
               {formatHomeDate(now)}
             </p>
           </div>
         </div>
         <button
           onClick={() => onNavigate("notifications")}
-          className="relative w-[44px] h-[44px] rounded-full bg-[#191C1C] flex items-center justify-center pressable"
+          className="relative w-[44px] h-[44px] rounded-full bg-[var(--card)] flex items-center justify-center pressable"
         >
-          <span className="material-symbols-outlined text-[#00D2D3] text-[22px]">notifications</span>
+          <span className="material-symbols-outlined text-[var(--accent)] text-[22px]">notifications</span>
           {unread > 0 && (
-            <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#FFB4AB] text-[#0B1A1A] text-[10px] leading-4">
+            <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-[var(--danger)] text-[#0B1A1A] text-[10px] leading-4">
               {unread}
             </span>
           )}
@@ -81,7 +81,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
       <Card
         className="mb-4 px-6 py-5 relative overflow-hidden"
         style={{
-          background: "linear-gradient(108.8deg, #282A2A 0%, #191C1C 100%)",
+          background: "linear-gradient(108.8deg, var(--raised) 0%, var(--card) 100%)",
           boxShadow: "0 0 40px rgba(0,242,255,0.1)",
         }}
       >
@@ -90,20 +90,20 @@ export default function HomePage({ onNavigate }: HomePageProps) {
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
             style={{ background: "rgba(0,242,255,0.1)", border: "1px solid rgba(0,242,255,0.2)" }}
           >
-            <div className="w-1.5 h-1.5 rounded-full bg-[#00D2D3]" />
-            <span className="text-[#00D2D3] text-[11px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>Онлайн</span>
+            <div className="w-1.5 h-1.5 rounded-full bg-[var(--fill)]" />
+            <span className="text-[var(--accent)] text-[11px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>Онлайн</span>
           </div>
         </div>
-        <p className="text-[#B9CACB] text-[15px] mb-1" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+        <p className="text-[var(--ink-soft)] text-[15px] mb-1" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
           Общий баланс
         </p>
         <div className="flex items-end gap-2 mb-1">
-          <span className="text-[#E0E0E0] text-[34px] font-medium leading-none" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+          <span className="text-[var(--ink)] text-[34px] font-medium leading-none" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
             {hidden ? "••••" : formatRub(balance)}
           </span>
-          <span className="text-[#00D2D3] text-[18px] mb-0.5">₽</span>
+          <span className="text-[var(--accent)] text-[18px] mb-0.5">₽</span>
         </div>
-        <p className="text-[rgba(185,202,203,0.5)] text-[12px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+        <p className="text-[var(--muted-50)] text-[12px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
           Цифровой рубль · ЦР кошелёк
         </p>
       </Card>
@@ -118,12 +118,12 @@ export default function HomePage({ onNavigate }: HomePageProps) {
           >
             <div
               className="w-[56px] h-[56px] rounded-full flex items-center justify-center"
-              style={{ background: "#282A2A", boxShadow: "0 0 15px rgba(0,242,255,0.08)" }}
+              style={{ background: "var(--raised)", boxShadow: "0 0 15px rgba(0,242,255,0.08)" }}
             >
-              <span className="material-symbols-outlined text-[#00D2D3] text-[24px]">{a.icon}</span>
+              <span className="material-symbols-outlined text-[var(--accent)] text-[24px]">{a.icon}</span>
             </div>
             <span
-              className="text-[rgba(185,202,203,0.9)] text-[11px] text-center leading-tight"
+              className="text-[var(--muted-90)] text-[11px] text-center leading-tight"
               style={{ fontFamily: "'Roboto:Medium', sans-serif" }}
             >
               {a.label}
@@ -137,12 +137,12 @@ export default function HomePage({ onNavigate }: HomePageProps) {
         className="mb-4 px-4 py-3 rounded-[20px] flex items-center gap-3"
         style={{ background: "rgba(255,180,171,0.12)", border: "1px solid rgba(255,180,171,0.35)" }}
       >
-        <span className="material-symbols-outlined text-[#FFB4AB] text-[22px]">ac_unit</span>
+        <span className="material-symbols-outlined text-[var(--danger)] text-[22px]">ac_unit</span>
         <div className="min-w-0 flex-1">
-          <p className="text-[#FFB4AB] text-[13px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+          <p className="text-[var(--danger)] text-[13px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
             Счёт временно ограничен
           </p>
-          <p className="text-[rgba(185,202,203,0.7)] text-[12px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+          <p className="text-[var(--muted-70)] text-[12px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
             Операции недоступны. При необходимости напишите в поддержку.
           </p>
         </div>
@@ -152,23 +152,23 @@ export default function HomePage({ onNavigate }: HomePageProps) {
 
       {/* Analytics row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        <Card className="p-4" style={{ background: "#191C1C" }}>
+        <Card className="p-4" style={{ background: "var(--card)" }}>
           <p
-            className="text-[rgba(185,202,203,0.6)] text-[10px] uppercase tracking-[1px] mb-3"
+            className="text-[var(--muted-60)] text-[10px] uppercase tracking-[1px] mb-3"
             style={{ fontFamily: "'Roboto:Medium', sans-serif" }}
           >
             Расходы
           </p>
-          <p className="text-[#FFB4AB] text-[20px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
+          <p className="text-[var(--danger)] text-[20px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
             {formatRub(spent)} ₽
           </p>
-          <p className="text-[#B9CACB] text-[11px] mt-1" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+          <p className="text-[var(--ink-soft)] text-[11px] mt-1" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
             Текущие расходы в месяце
           </p>
         </Card>
-        <Card className="p-4" style={{ background: "#191C1C" }}>
+        <Card className="p-4" style={{ background: "var(--card)" }}>
           <p
-            className="text-[rgba(185,202,203,0.6)] text-[10px] uppercase tracking-[1px] mb-3"
+            className="text-[var(--muted-60)] text-[10px] uppercase tracking-[1px] mb-3"
             style={{ fontFamily: "'Roboto:Medium', sans-serif" }}
           >
             Доходы
@@ -176,33 +176,33 @@ export default function HomePage({ onNavigate }: HomePageProps) {
           <p className="text-[#228D57] text-[20px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
             {formatRub(income)} ₽
           </p>
-          <p className="text-[#B9CACB] text-[11px] mt-1" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+          <p className="text-[var(--ink-soft)] text-[11px] mt-1" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
             Текущий доход в месяце
           </p>
         </Card>
-        <Card className="p-4" style={{ background: "#191C1C" }}>
+        <Card className="p-4" style={{ background: "var(--card)" }}>
           <p
-            className="text-[rgba(185,202,203,0.6)] text-[10px] uppercase tracking-[1px] mb-3"
+            className="text-[var(--muted-60)] text-[10px] uppercase tracking-[1px] mb-3"
             style={{ fontFamily: "'Roboto:Medium', sans-serif" }}
           >
             Прогноз
           </p>
-          <p className="text-[#FFB4AB] text-[20px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
+          <p className="text-[var(--danger)] text-[20px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
             {txs.length ? `−${formatRub(Math.round(spent * 0.4))} ₽` : "0,00 ₽"}
           </p>
-          <p className="text-[#B9CACB] text-[11px] mt-1" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+          <p className="text-[var(--ink-soft)] text-[11px] mt-1" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
             Ожидаемые расходы до конца месяца
           </p>
         </Card>
-        <Card className="p-4" style={{ background: "#191C1C" }}>
+        <Card className="p-4" style={{ background: "var(--card)" }}>
           <p
-            className="text-[rgba(185,202,203,0.6)] text-[10px] uppercase tracking-[1px] mb-3"
+            className="text-[var(--muted-60)] text-[10px] uppercase tracking-[1px] mb-3"
             style={{ fontFamily: "'Roboto:Medium', sans-serif" }}
           >
             Безопасность
           </p>
-          <span className="material-symbols-outlined text-[#00D2D3] text-[22px]">security</span>
-          <p className="text-[#B9CACB] text-[11px] mt-1" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+          <span className="material-symbols-outlined text-[var(--accent)] text-[22px]">security</span>
+          <p className="text-[var(--ink-soft)] text-[11px] mt-1" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
             Проверка биометрии рекомендована
           </p>
         </Card>
@@ -211,18 +211,18 @@ export default function HomePage({ onNavigate }: HomePageProps) {
       {/* Recent transactions */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[#E0E0E0] text-[17px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+          <p className="text-[var(--ink)] text-[17px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
             Последние операции
           </p>
           <button onClick={() => onNavigate("history")}>
-            <span className="text-[#00D2D3] text-[13px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+            <span className="text-[var(--accent)] text-[13px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
               Все →
             </span>
           </button>
         </div>
-        <Card style={{ background: "#191C1C" }}>
+        <Card style={{ background: "var(--card)" }}>
           {recentTx.length === 0 && (
-            <p className="text-center text-[rgba(185,202,203,0.45)] text-[13px] py-8">Операций пока нет</p>
+            <p className="text-center text-[var(--muted-45)] text-[13px] py-8">Операций пока нет</p>
           )}
           {recentTx.map((tx, i) => (
             <button
@@ -230,19 +230,19 @@ export default function HomePage({ onNavigate }: HomePageProps) {
               key={tx.id}
               onClick={() => onNavigate("tx", tx.id)}
               className={`w-full flex items-center gap-3 px-4 py-3.5 text-left pressable ${flashIds.includes(tx.id) ? "tx-flash" : ""}`}
-              style={{ borderBottom: i < recentTx.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}
+              style={{ borderBottom: i < recentTx.length - 1 ? "1px solid var(--line)" : "none" }}
             >
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ background: "#282A2A" }}
+                style={{ background: "var(--raised)" }}
               >
-                <span className="material-symbols-outlined text-[#00D2D3] text-[18px]">{tx.icon}</span>
+                <span className="material-symbols-outlined text-[var(--accent)] text-[18px]">{tx.icon}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[#E0E0E0] text-[14px] font-medium truncate" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+                <p className="text-[var(--ink)] text-[14px] font-medium truncate" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
                   {tx.name}
                 </p>
-                <p className="text-[rgba(185,202,203,0.6)] text-[12px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+                <p className="text-[var(--muted-60)] text-[12px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
                   {formatTxDate(tx.createdAt)}{tx.status === "pending" ? " · в обработке" : ""}
                 </p>
               </div>
@@ -250,7 +250,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
                 className="text-[14px] font-medium"
                 style={{
                   fontFamily: "'Roboto:Medium', sans-serif",
-                  color: tx.type === "income" ? "#228D57" : "#FFB4AB",
+                  color: tx.type === "income" ? "#228D57" : "var(--danger)",
                 }}
               >
                 {tx.amount > 0 ? `+${formatRub(tx.amount)} ₽` : `−${formatRub(Math.abs(tx.amount))} ₽`}
@@ -262,7 +262,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
 
       {(wallet?.savings?.length || 0) > 0 && (
       <>
-      <p className="text-[#E0E0E0] text-[17px] font-medium mb-3" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+      <p className="text-[var(--ink)] text-[17px] font-medium mb-3" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
         Копилки
       </p>
       {(wallet?.savings || []).map((s) => (
@@ -270,16 +270,16 @@ export default function HomePage({ onNavigate }: HomePageProps) {
           key={s.id}
           className="px-6 py-5 mb-3 relative overflow-hidden"
           style={{
-            background: "linear-gradient(108.8deg, #282A2A 0%, #191C1C 100%)",
+            background: "linear-gradient(108.8deg, var(--raised) 0%, var(--card) 100%)",
             boxShadow: "0 0 40px rgba(0,242,255,0.08)",
           }}
         >
-          <p className="text-[#B9CACB] text-[15px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>{s.name}</p>
+          <p className="text-[var(--ink-soft)] text-[15px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>{s.name}</p>
           <p className="flex items-baseline gap-1.5 mt-1 leading-none">
-            <span className="text-[#E0E0E0] text-[30px] font-medium tabular-nums" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+            <span className="text-[var(--ink)] text-[30px] font-medium tabular-nums" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
               {hidden ? "••••" : formatRub(s.amount)}
             </span>
-            <span className="text-[#00D2D3] text-[18px] font-medium">₽</span>
+            <span className="text-[var(--accent)] text-[18px] font-medium">₽</span>
           </p>
         </Card>
       ))}
