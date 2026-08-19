@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useWallet } from "../wallet";
 import { editPhoneMask, isOwnPayee, maskPhone, validatePhone } from "../validate";
-import { PayOtpSheet, PAY_OTP_LIMIT, type OtpChannel } from "../components/OtpPanel";
+import { PayOtpSheet, type OtpChannel } from "../components/OtpPanel";
 
 interface BulkPaymentsProps {
   onBack: () => void;
@@ -91,7 +91,12 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
       setMsg(`Недостаточно средств: нужно ${total.toLocaleString("ru-RU")} ₽, на счёте ${wallet?.balance ?? 0} ₽`);
       return;
     }
-    if (total > PAY_OTP_LIMIT && user?.email !== "ivan@alfa.demo") {
+    if (user?.email !== "ivan@alfa.demo") {
+      setOtpChannel("email");
+      setOtpCode("");
+      setOtpHint("");
+      setOtpBot("");
+      setMsg("");
       setOtpOpen(true);
       return;
     }
@@ -264,10 +269,11 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
         error={msg}
         busy={otpBusy || sending}
         botUrl={otpBot}
+        emailOnly
         onCancel={() => setOtpOpen(false)}
         onSend={async () => {
           setOtpBusy(true);
-          const r = await requestCode({ purpose: "pay", channel: otpChannel, amount: total });
+          const r = await requestCode({ purpose: "pay", channel: "email", amount: total, bulk: true });
           setOtpBusy(false);
           if (r.error) setMsg(r.error);
           else if (r.needLink) {

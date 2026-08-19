@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, getToken, setToken, type Snapshot } from "./api";
+import { clearBioPassed, markBioPassed } from "./bio";
 import type { DbContact, DbNote, DbTx, DbUser, DbWallet } from "./db";
 
 export type Tx = DbTx;
@@ -82,7 +83,7 @@ type WalletCtx = {
   pendingPayee: string;
   setPendingPayee: (v: string) => void;
   login: (email: string, password: string, code?: string) => Promise<string | null>;
-  requestCode: (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number }) => Promise<{ via?: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string; error?: string }>;
+  requestCode: (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) => Promise<{ via?: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string; error?: string }>;
   forgotPassword: (login: string, channel?: "sms" | "email") => Promise<{ via?: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string; error?: string }>;
   resetPassword: (login: string, code: string, password: string) => Promise<string | null>;
   register: (u: Omit<DbUser, "passwordHash" | "walletId" | "createdAt"> & { password: string; code: string; channel?: "sms" | "email" }) => Promise<string | null>;
@@ -188,7 +189,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     };
   }, [authed, apply]);
 
-  const requestCode = useCallback(async (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number }) => {
+  const requestCode = useCallback(async (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) => {
     try {
       const r = await api.requestCode(opts);
       return { via: r.via, masked: r.masked, fallback: r.fallback, needLink: r.needLink, botUrl: r.botUrl };
@@ -218,6 +219,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string, code?: string) => {
     try {
       apply(await api.login(email, password, code), { quiet: true });
+      markBioPassed();
       return null;
     } catch (e) {
       return fail(e);
@@ -237,6 +239,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         code: input.code,
         channel: input.channel || "",
       }), { quiet: true });
+      markBioPassed();
       return null;
     } catch (e) {
       return fail(e);
@@ -244,6 +247,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [apply, fail]);
 
   const logout = useCallback(() => {
+    clearBioPassed();
     void api.logout();
     setAuthed(false);
     setUser(null);

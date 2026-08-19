@@ -607,6 +607,14 @@ async function assertPayCode(email, amount, code) {
   return true;
 }
 
+async function assertBulkCode(email, amount, code) {
+  if (!(Number(amount) > 0) || email === DEMO_EMAIL) return true;
+  if (!(await takeCode("pay", email, code))) {
+    throw new Error("Для массового платежа нужен код из письма");
+  }
+  return true;
+}
+
 function addNote(email, title, body, kind = "transfer", extra = {}) {
   return db.insertNote({
     id: uid("n-"),
@@ -842,11 +850,12 @@ const server = http.createServer(async (req, res) => {
           if (!authed) return send(res, 401, { error: "Нужна авторизация" });
           try { await assertNotFrozen(authed); } catch (e) { return send(res, 403, { error: e.message }); }
           const amount = Number(b.amount);
-          if (!needPayOtp(authed, amount)) {
+          const bulk = b.bulk === true;
+          if (authed === DEMO_EMAIL || (!bulk && !needPayOtp(authed, amount))) {
             return send(res, 200, { ok: true, via: "skip", masked: "" });
           }
           const user = await db.getUser(authed);
-          const ch = channel || user.otpChannel || "sms";
+          const ch = bulk ? "email" : (channel || user.otpChannel || "sms");
           if (ch !== "email") {
             const plan = await phoneDeliveryPlan(user.phone);
             if (plan.mode === "link") return send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: plan.botUrl, masked: maskPhone(user.phone) });
@@ -1413,7 +1422,7 @@ const server = http.createServer(async (req, res) => {
         const b = await readBody(req);
         const rows = Array.isArray(b.rows) ? b.rows : [];
         const bulkTotal = rows.reduce((s, r) => s + (Number(r.amount) > 0 ? Number(r.amount) : 0), 0);
-        try { await assertNotFrozen(email); await assertLimits(email, bulkTotal); await assertPayCode(email, bulkTotal, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
+        try { await assertNotFrozen(email); await assertLimits(email, bulkTotal); await assertBulkCode(email, bulkTotal, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
         let ok = 0;
         let fail = 0;
         const me = await db.getUser(email);
