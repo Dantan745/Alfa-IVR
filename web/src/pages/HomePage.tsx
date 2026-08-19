@@ -1,5 +1,8 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { api } from "../api";
 import { formatHomeDate, formatRub, formatTxDate, greetingByHour, useWallet } from "../wallet";
+
+const ADVICE_KEY = "alfa-recommendation";
 
 interface HomePageProps {
   onNavigate: (page: string, extra?: string) => void;
@@ -27,6 +30,35 @@ function Card({ className, style, children }: { className?: string; style?: CSSP
 export default function HomePage({ onNavigate }: HomePageProps) {
   const { user, wallet, txs, notes, flashIds } = useWallet();
   const [now, setNow] = useState(() => new Date());
+  const [advice, setAdvice] = useState("");
+  const [adviceWait, setAdviceWait] = useState(true);
+  const [canDiscuss, setCanDiscuss] = useState(false);
+  useEffect(() => {
+    const saved = sessionStorage.getItem(ADVICE_KEY) || "";
+    if (saved) {
+      setAdvice(saved);
+      setCanDiscuss(true);
+      setAdviceWait(false);
+      return;
+    }
+    let stop = false;
+    api.recommendation().then((res) => {
+      if (stop) return;
+      if (res.recommendation) {
+        setAdvice(res.recommendation);
+        setCanDiscuss(true);
+        sessionStorage.setItem(ADVICE_KEY, res.recommendation);
+      } else {
+        setAdvice(res.recommendation_error || res.error || "Рекомендация сейчас недоступна");
+      }
+      setAdviceWait(false);
+    }).catch((err: Error) => {
+      if (stop) return;
+      setAdvice(err.message || "Рекомендация сейчас недоступна");
+      setAdviceWait(false);
+    });
+    return () => { stop = true; };
+  }, []);
   useEffect(() => {
     const tick = () => setNow(new Date());
     const id = setInterval(tick, 30_000);
@@ -40,8 +72,15 @@ export default function HomePage({ onNavigate }: HomePageProps) {
   const balance = wallet?.balance ?? 0;
   const unread = notes.filter((n) => !n.read).length;
   const recentTx = [...txs].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
-  const spent = txs.filter((t) => t.type === "expense").reduce((s, t) => s + Math.abs(t.amount), 0);
-  const income = txs.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+  const monthTx = txs.filter((t) => t.createdAt >= monthStart && t.createdAt < monthEnd && t.status !== "rejected");
+  const spent = monthTx.filter((t) => t.type === "expense").reduce((s, t) => s + Math.abs(t.amount), 0);
+  const income = monthTx.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
+  const day = now.getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysLeft = Math.max(0, daysInMonth - day);
+  const expected = day > 0 ? Math.round((spent / day) * daysLeft) : 0;
   const hidden = !!wallet?.hideBalance;
   const frozen = !!user?.frozen;
   return (
@@ -188,7 +227,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
             Прогноз
           </p>
           <p className="text-[var(--danger)] text-[20px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
-            {txs.length ? `−${formatRub(Math.round(spent * 0.4))} ₽` : "0,00 ₽"}
+            {expected > 0 ? `−${formatRub(expected)} ₽` : "0,00 ₽"}
           </p>
           <p className="text-[var(--ink-soft)] text-[11px] mt-1" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
             Ожидаемые расходы до конца месяца
@@ -285,6 +324,27 @@ export default function HomePage({ onNavigate }: HomePageProps) {
       ))}
       </>
       )}
+
+      <Card className="px-4 py-4 mb-3" style={{ background: "var(--card)" }}>
+        <p className="text-[var(--muted-60)] text-[10px] uppercase tracking-[1px] mb-2" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+          Рекомендация
+        </p>
+        <p className="text-[var(--ink)] text-[13px] leading-snug" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+          {adviceWait ? "Собираем рекомендацию…" : advice}
+        </p>
+        <button
+          type="button"
+          disabled={adviceWait || !canDiscuss}
+          onClick={() => onNavigate("discuss")}
+          className="mt-3 h-[32px] px-3 rounded-full text-[12px] font-medium pressable"
+          style={{
+            background: adviceWait || !canDiscuss ? "var(--avatar-from)" : "linear-gradient(128deg, var(--fill), var(--fill-2))",
+            color: adviceWait || !canDiscuss ? "var(--disabled-ink)" : "#0B1A1A",
+          }}
+        >
+          Обсудить рекомендацию
+        </button>
+      </Card>
     </div>
   );
 }

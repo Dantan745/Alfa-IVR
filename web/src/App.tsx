@@ -16,6 +16,7 @@ import TxDetailPage from "./pages/TxDetailPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import SecurityPage from "./pages/SecurityPage";
 import SupportPage from "./pages/SupportPage";
+import DiscussPage from "./pages/DiscussPage";
 import BottomNav from "./components/BottomNav";
 import AdminPage from "./pages/AdminPage";
 import { useWallet } from "./wallet";
@@ -23,7 +24,7 @@ import { useWallet } from "./wallet";
 type Tab = "home" | "payments" | "history" | "profile";
 type SubPage =
   | "transfer" | "qr" | "limits" | "address"
-  | "bulk" | "smart" | "topup" | "tx" | "notifications" | "security" | "support" | null;
+  | "bulk" | "smart" | "topup" | "tx" | "notifications" | "security" | "support" | "discuss" | null;
 
 function Frame({ children }: { children: ReactNode }) {
   return (
@@ -47,7 +48,7 @@ export default function App() {
   }, [authed, payLink]);
 
   function navigate(page: string, extra?: string) {
-    const subs: SubPage[] = ["transfer", "qr", "limits", "address", "bulk", "smart", "topup", "tx", "notifications", "security", "support"];
+    const subs: SubPage[] = ["transfer", "qr", "limits", "address", "bulk", "smart", "topup", "tx", "notifications", "security", "support", "discuss"];
     const tabs: Tab[] = ["home", "payments", "history", "profile"];
     if (page === "tx" && extra) {
       setTxId(extra);
@@ -100,6 +101,7 @@ export default function App() {
       case "notifications": return <NotificationsPage onBack={goBack} onNavigate={navigate} />;
       case "security": return <SecurityPage onBack={goBack} />;
       case "support": return <SupportPage onBack={goBack} />;
+      case "discuss": return <DiscussPage onBack={goBack} />;
       default: return null;
     }
   }

@@ -1,7 +1,3 @@
-'''Рекомендации одного клиента. Счёт и запрос к Gemini скопированы из ноутбука.
-
-Антифрод сюда не входит. anti_fraud.joblib и anti_fraud_infer.py не используются.
-'''
 import json
 import os
 import re
@@ -55,7 +51,6 @@ def _day_hour(row):
 
 
 def expenses_from_rows(rows):
-    '''Списания одного клиента в колонках ноутбука. Доход и нулевые суммы не входят.'''
     parsed = []
     for row in rows or []:
         amount = row.get('amount')
@@ -119,7 +114,6 @@ def amount_change_90(one):
 
 
 def prepare_client(frame):
-    '''diff_days, amount_change_90 и доли — как в ноутбуке, для одного клиента.'''
     out = frame.sort_values(['mcc_code', 'day', 'hour']).copy()
     out['diff_days'] = out.groupby('mcc_code')['day'].diff()
     out = amount_change_90(out)
@@ -185,13 +179,15 @@ def build_prompt(regular, cluster_row, descriptions):
     return prompt
 
 
-def ask_gemini(prompt, api_key=None, model=MODEL_NAME):
+def ask_gemini(prompt=None, api_key=None, model=MODEL_NAME, contents=None):
     key = api_key or os.environ.get('GEMINI_API_KEY') or ''
     if not key:
         return None, 'Нет GEMINI_API_KEY'
+    if contents is None:
+        contents = [{'role': 'user', 'parts': [{'text': prompt}]}]
     url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key
     body = json.dumps({
-        'contents': [{'role': 'user', 'parts': [{'text': prompt}]}],
+        'contents': contents,
         'tools': [{'code_execution': {}}],
     }).encode()
     req = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json'})
@@ -220,6 +216,36 @@ def _plain(value):
     if isinstance(value, int):
         return int(value)
     return value
+
+
+def client_prompt(rows, bundle=None):
+    frame = expenses_from_rows(rows)
+    if frame.empty:
+        return None
+    prepared, feature_row = prepare_client(frame)
+    if bundle is None:
+        bundle = load_clusters()
+    cluster_row = feature_row.to_dict()
+    cluster_row['cluster'] = assign_cluster(feature_row, bundle)
+    regular = prepared[['mcc_description', 'hour', 'amount', 'diff_days', 'amount_change_90']]
+    return build_prompt(regular, cluster_row, bundle['descriptions'])
+
+
+def discuss_client(rows, recommendation, messages, bundle=None):
+    prompt = client_prompt(rows, bundle)
+    text = str(recommendation or '').strip()
+    contents = [{'role': 'user', 'parts': [{'text': prompt or 'Обсуди рекомендацию с клиентом.'}]}]
+    if text:
+        contents.append({'role': 'model', 'parts': [{'text': text}]})
+    for message in messages or []:
+        role = 'model' if message.get('role') == 'model' else 'user'
+        line = str(message.get('text') or '').strip()
+        if line:
+            contents.append({'role': role, 'parts': [{'text': line[:4000]}]})
+    if not contents or contents[-1]['role'] != 'user':
+        return {'reply': None, 'recommendation_error': 'Нет сообщения'}
+    reply, error = ask_gemini(contents=contents)
+    return {'reply': reply, 'recommendation_error': error}
 
 
 def infer_client(rows, bundle=None, with_text=True):

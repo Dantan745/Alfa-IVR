@@ -1,5 +1,3 @@
-/** Фичи, используемые для обучения модели антифрода. Не меняет anti_fraud_infer.py. */
-
 export const FRAUD_FEATURES = [
   { name: "log_amount", title: "log_amount", desc: "log1p от абсолютной суммы операции" },
   { name: "amount_to_avg_ratio", title: "amount_to_avg_ratio", desc: "во сколько раз операция превышает средний чек счёта" },

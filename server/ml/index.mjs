@@ -1,9 +1,3 @@
-/**
- * Прогноз оборота и показ скора антифрода.
- * Фрод / Норма ставит только anomaly из anti_fraud.joblib.
- * anti_fraud_infer.py и joblib отсюда не меняются.
- */
-
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

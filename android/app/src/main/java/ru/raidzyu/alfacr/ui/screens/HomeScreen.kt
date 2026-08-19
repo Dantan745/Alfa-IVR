@@ -171,7 +171,7 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (String) -> Unit) {
                     StatFigma("Доходы", "65 000 ₽", Cr.Income, "Текущий доход в месяце", Modifier.weight(1f), income)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatFigma("Прогноз", "−42 000 ₽", Cr.Danger, "Ожидаемые расходы до конца месяца", Modifier.weight(1f), null)
+                    StatFigma("Прогноз", "0,00 ₽", Cr.Danger, "Ожидаемые расходы до конца месяца", Modifier.weight(1f), forecast, showZero = true, asExpense = true)
                     Box(Modifier.weight(1f).clip(RoundedCornerShape(28.dp)).background(Cr.Card).padding(16.dp)) {
                         Column {
                             Text("БЕЗОПАСНОСТЬ", color = Cr.Text2.copy(0.6f), fontSize = 10.sp, letterSpacing = 1.sp, fontFamily = RobotoFamily, fontWeight = FontWeight.Medium)
@@ -286,11 +286,19 @@ private fun StatFigma(
     sub: String,
     modifier: Modifier,
     live: Long?,
+    showZero: Boolean = false,
+    asExpense: Boolean = false,
 ) {
+    val value = when {
+        live == null -> fallback
+        live > 0 -> (if (asExpense) "−" else "") + live.toRub() + " ₽"
+        showZero -> "0,00 ₽"
+        else -> fallback
+    }
     Column(modifier.clip(RoundedCornerShape(28.dp)).background(Cr.Card).padding(16.dp).height(110.dp)) {
         Text(title.uppercase(), color = Cr.Text2.copy(0.6f), fontSize = 10.sp, letterSpacing = 1.sp, fontFamily = RobotoFamily, fontWeight = FontWeight.Medium)
         Text(
-            if (live != null && live > 0) live.toRub() + " ₽" else fallback,
+            value,
             color = color,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,

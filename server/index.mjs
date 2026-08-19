@@ -1263,6 +1263,18 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      if (req.method === "POST" && p === "/api/recommendation/chat") {
+        const b = await readBody(req);
+        const txs = await db.listTxsByEmail(email);
+        const messages = Array.isArray(b.messages) ? b.messages.slice(-12) : [];
+        const out = await recommendClient(txs, {
+          messages,
+          recommendation: String(b.recommendation || ""),
+        });
+        send(res, out.error ? 502 : 200, out);
+        return;
+      }
+
       if (req.method === "POST" && p === "/api/transfer") {
         const b = await readBody(req);
         const amount = Number(b.amount);
