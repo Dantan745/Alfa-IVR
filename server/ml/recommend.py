@@ -35,17 +35,7 @@ def category_group(txt):
 
 
 def _day_hour(row):
-    if row.get('day') is not None and str(row.get('day')).strip() != '':
-        day = int(float(row['day']))
-        hour = int(float(row.get('hour') or 0))
-        return day, hour
-    raw_dt = row.get('tr_datetime')
-    if raw_dt is not None and str(raw_dt).strip():
-        time = str(raw_dt).split(' ', 1)
-        day = int(float(time[0]))
-        hour = int(time[1][0:2]) if len(time) > 1 else 0
-        return day, hour
-    ts = row.get('createdAt', row.get('created_at'))
+    ts = row.get('createdAt')
     if ts is None:
         return 0, 0
     stamp = datetime.fromtimestamp(float(ts) / 1000, MSK)
@@ -62,15 +52,10 @@ def expenses_from_rows(rows):
         if not amount < 0:
             continue
         day, hour = _day_hour(row)
-        mcc_description = row.get('mcc_description')
-        if mcc_description is None or not str(mcc_description).strip():
-            mcc_description = row.get('category') or row.get('name') or ''
-        mcc_code = row.get('mcc_code')
-        if mcc_code is None or not str(mcc_code).strip():
-            mcc_code = mcc_description
+        description = str(row.get('category') or row.get('name') or '')
         parsed.append({
-            'mcc_code': str(mcc_code),
-            'mcc_description': str(mcc_description),
+            'mcc_code': description,
+            'mcc_description': description,
             'day': day,
             'hour': hour,
             'amount': abs(amount),
