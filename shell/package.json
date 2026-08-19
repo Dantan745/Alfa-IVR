@@ -14,7 +14,9 @@
     "open:ios": "cap open ios"
   },
   "dependencies": {
+    "@aparajita/capacitor-biometric-auth": "^9.0.0",
     "@capacitor/android": "^7.4.3",
+    "@capacitor/app": "^7.1.2",
     "@capacitor/core": "^7.4.3",
     "@capacitor/ios": "^7.4.3"
   },
@@ -41,13 +43,17 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "resources/icon.ico"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "resources/icon.png",
       "category": "public.app-category.finance"
     },

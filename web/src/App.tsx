@@ -1,5 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { clearPayLink, readPayLink, type QrBill } from "./qr";
+import { backNav, ensureRoot, pushNav, type NavSnap } from "./navHistory";
+import { bioPassed, deviceBioOn, markBioPassed } from "./bio";
+import BioGate from "./components/BioGate";
 import AuthPage from "./pages/AuthPage";
 import HomePage from "./pages/HomePage";
 import PaymentsPage from "./pages/PaymentsPage";
@@ -35,15 +38,89 @@ function Frame({ children }: { children: ReactNode }) {
 
 export default function App() {
   const isAdmin = typeof window !== "undefined" && window.location.pathname.startsWith("/admin");
-  const { ready, authed, toast } = useWallet();
+  const { ready, authed, toast, logout } = useWallet();
   if (isAdmin) return <AdminPage />;
   const [tab, setTab] = useState<Tab>("home");
   const [sub, setSub] = useState<SubPage>(null);
   const [txId, setTxId] = useState<string | null>(null);
   const [payLink, setPayLink] = useState<QrBill | null>(() => readPayLink());
+  const [unlocked, setUnlocked] = useState(false);
+  const place = useRef({ tab, sub });
+  place.current = { tab, sub };
+  const qrPushed = useRef(false);
 
   useEffect(() => {
-    if (authed && payLink) setSub("qr");
+    if (authed && bioPassed()) setUnlocked(true);
+  }, [authed]);
+
+  useEffect(() => {
+    ensureRoot();
+    const onPop = (e: PopStateEvent) => {
+      const s = e.state as NavSnap | null;
+      if (!s?.alfaNav || s.otp) return;
+      setTab((s.tab as Tab) || "home");
+      setSub((s.sub as SubPage) || null);
+      setTxId(s.txId);
+      if (!s.sub) {
+        setPayLink(null);
+        clearPayLink();
+      }
+    };
+    const onStay = () => {
+      const p = place.current;
+      if (p.sub) {
+        setSub(null);
+        setTxId(null);
+        setPayLink(null);
+        clearPayLink();
+        return;
+      }
+      if (p.tab !== "home") setTab("home");
+    };
+    window.addEventListener("popstate", onPop);
+    window.addEventListener("alfa-back", onStay);
+    let stop = false;
+    let remove: (() => void) | undefined;
+    void (async () => {
+      try {
+        const { Capacitor } = await import("@capacitor/core");
+        if (stop || !Capacitor.isNativePlatform()) return;
+        const { App } = await import("@capacitor/app");
+        const handle = await App.addListener("backButton", ({ canGoBack }) => {
+          if (canGoBack) {
+            window.history.back();
+            return;
+          }
+          const p = place.current;
+          if (p.sub || p.tab !== "home") {
+            window.dispatchEvent(new Event("alfa-back"));
+            return;
+          }
+          void App.exitApp();
+        });
+        if (stop) {
+          void handle.remove();
+          return;
+        }
+        remove = () => { void handle.remove(); };
+      } catch {
+        /* браузер и рабочий стол */
+      }
+    })();
+    return () => {
+      stop = true;
+      window.removeEventListener("popstate", onPop);
+      window.removeEventListener("alfa-back", onStay);
+      remove?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authed && payLink && !qrPushed.current) {
+      qrPushed.current = true;
+      setSub("qr");
+      pushNav({ tab: "home", sub: "qr", txId: null });
+    }
   }, [authed, payLink]);
 
   function navigate(page: string, extra?: string) {
@@ -52,21 +129,31 @@ export default function App() {
     if (page === "tx" && extra) {
       setTxId(extra);
       setSub("tx");
+      pushNav({ tab, sub: "tx", txId: extra });
       return;
     }
     if (subs.includes(page as SubPage)) {
       setSub(page as SubPage);
+      pushNav({ tab, sub: page, txId: null });
     } else if (tabs.includes(page as Tab)) {
       setTab(page as Tab);
       setSub(null);
+      pushNav({ tab: page, sub: null, txId: null });
     }
   }
 
   function goBack() {
+    if (backNav()) return;
     setSub(null);
     setTxId(null);
     setPayLink(null);
     clearPayLink();
+  }
+
+  function openTab(next: Tab) {
+    setTab(next);
+    setSub(null);
+    pushNav({ tab: next, sub: null, txId: null });
   }
 
   if (!ready) {
@@ -83,6 +170,17 @@ export default function App() {
     return (
       <Frame>
         <AuthPage />
+      </Frame>
+    );
+  }
+
+  if (deviceBioOn() && !unlocked) {
+    return (
+      <Frame>
+        <BioGate
+          onPassed={() => { markBioPassed(); setUnlocked(true); }}
+          onPassword={() => { setUnlocked(false); void logout(); }}
+        />
       </Frame>
     );
   }
@@ -120,7 +218,7 @@ export default function App() {
           <BottomNav
             variant="side"
             current={tab}
-            onNavigate={(p) => { setTab(p); setSub(null); }}
+            onNavigate={openTab}
           />
         )}
         <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
@@ -133,7 +231,7 @@ export default function App() {
               <BottomNav
                 variant="bottom"
                 current={tab}
-                onNavigate={(p) => { setTab(p); setSub(null); }}
+                onNavigate={openTab}
               />
             </>
           )}
