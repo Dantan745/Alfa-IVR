@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export const PAY_OTP_LIMIT = 10000;
 
@@ -35,6 +35,7 @@ export default function OtpPanel({
   onCode,
   error,
   botUrl,
+  lockChannel,
 }: {
   title?: string;
   hint?: string;
@@ -44,12 +45,13 @@ export default function OtpPanel({
   onCode: (v: string) => void;
   error?: string;
   botUrl?: string;
+  lockChannel?: boolean;
 }) {
   return (
     <div className="mb-2">
       {title && <p className="text-[var(--ink)] text-[16px] font-medium mb-2">{title}</p>}
       {hint && <p className="text-[var(--muted-70)] text-[13px] mb-3">{hint}</p>}
-      <ChannelPick channel={channel} onChange={onChannel} />
+      {!lockChannel && <ChannelPick channel={channel} onChange={onChannel} />}
       <p className="text-[var(--ink)] text-[13px] mb-2 uppercase tracking-[1px]">Код подтверждения</p>
       <input
         inputMode="numeric"
@@ -82,6 +84,7 @@ export function PayOtpSheet({
   onSend,
   onConfirm,
   botUrl,
+  emailOnly,
 }: {
   open: boolean;
   amount: number;
@@ -96,17 +99,51 @@ export function PayOtpSheet({
   onSend: () => void;
   onConfirm: () => void;
   botUrl?: string;
+  emailOnly?: boolean;
 }) {
   const [sent, setSent] = useState(false);
+  const cancelRef = useRef(onCancel);
+  const sendRef = useRef(onSend);
+  cancelRef.current = onCancel;
+  sendRef.current = onSend;
+
+  useEffect(() => {
+    if (!open) return;
+    let closedByPop = false;
+    const prev = history.state as { tab?: string; sub?: string | null; txId?: string | null } | null;
+    history.pushState({ alfaNav: true, otp: true, tab: prev?.tab || "home", sub: prev?.sub || null, txId: prev?.txId || null }, "");
+    const onPop = () => {
+      closedByPop = true;
+      cancelRef.current();
+    };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      if (!closedByPop) history.back();
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      setSent(false);
+      return;
+    }
+    if (!emailOnly) return;
+    setSent(true);
+    sendRef.current();
+  }, [open, emailOnly]);
+
   if (!open) return null;
   return (
-    <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/55">
-      <div className="w-full max-w-[440px] rounded-t-[28px] px-5 pt-5 pb-8" style={{ background: "var(--card)" }}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55">
+      <div className="w-full max-w-[440px] rounded-t-[28px] px-5 pt-5 pb-[max(2rem,env(safe-area-inset-bottom))]" style={{ background: "var(--card)" }}>
         <p className="text-[var(--ink)] text-[18px] font-medium">Подтверждение платежа</p>
         <p className="text-[var(--muted-75)] text-[14px] mt-2 mb-4">
-          Сумма {amount.toLocaleString("ru-RU")} ₽ больше 10 000 ₽. Нужен одноразовый код.
+          {emailOnly
+            ? "Код подтверждения уходит на почту. Введите его и подтвердите массовый платёж."
+            : `Сумма ${amount.toLocaleString("ru-RU")} ₽ больше 10 000 ₽. Нужен одноразовый код.`}
         </p>
-        <OtpPanel channel={channel} onChannel={onChannel} code={code} onCode={onCode} hint={hint} error={error} botUrl={botUrl} />
+        <OtpPanel channel={channel} onChannel={onChannel} code={code} onCode={onCode} hint={hint} error={error} botUrl={botUrl} lockChannel={emailOnly} />
         <button
           type="button"
           disabled={busy}

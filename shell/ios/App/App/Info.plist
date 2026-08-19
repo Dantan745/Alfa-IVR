@@ -47,5 +47,7 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Камера нужна, чтобы сканировать QR-код перевода.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID нужен, чтобы входить в кошелёк по лицу.</string>
 </dict>
 </plist>

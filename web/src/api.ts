@@ -63,7 +63,7 @@ function remember(snap: Snapshot) {
 
 export const api = {
   health: () => req<{ ok: boolean }>("/api/health"),
-  requestCode: (body: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number }) =>
+  requestCode: (body: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) =>
     req<{ ok: boolean; via: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string }>("/api/auth/request-code", { method: "POST", body: JSON.stringify(body) }),
   login: (email: string, password: string, code?: string) =>
     req<Snapshot>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password, code }) }).then(remember),
