@@ -73,7 +73,8 @@ class HeuristicAnomalyDetector : AnomalyDetector {
 class LinearForecaster : PaymentForecaster {
     override suspend fun monthForecastKopecks(spentSoFar: Long, dayOfMonth: Int): Long {
         val day = dayOfMonth.coerceAtLeast(1)
-        val projected = spentSoFar * 30 / day
-        return (projected - spentSoFar).coerceAtLeast(0)
+        val daysInMonth = java.util.Calendar.getInstance().getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+        val left = (daysInMonth - day).coerceAtLeast(0)
+        return spentSoFar * left / day
     }
 }
