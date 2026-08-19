@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { deliver, ensureTelegramWebhook, handleTelegramUpdate, hydrateNotify, loadNotify, maskPhone, phoneDeliveryPlan, publicNotify, saveNotify, telegramHookOk } from "./notify.mjs";
 import { buildReport, extractFeatures, runCustomModel, scoreWithFriendModelAsync } from "./ml/index.mjs";
+import { recommendClient } from "./ml/recommend.mjs";
 import { buildFraudSample } from "./ml/features.mjs";
 import { formatRuPhone, isRuMobile, ruMobileDigits, samePhone } from "./phone.mjs";
 import { hashPassword, isScryptHash, verifyPassword } from "./passwords.mjs";
@@ -1252,6 +1253,13 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === "GET" && (p === "/api/me" || p === "/api/state")) {
         send(res, 200, await snapshot(email));
+        return;
+      }
+
+      if (req.method === "GET" && p === "/api/recommendation") {
+        const txs = await db.listTxsByEmail(email);
+        const out = await recommendClient(txs);
+        send(res, out.error ? 502 : 200, out);
         return;
       }
 
