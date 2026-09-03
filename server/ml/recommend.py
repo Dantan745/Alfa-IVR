@@ -14,6 +14,7 @@ DIR = Path(__file__).resolve().parent
 BUNDLE_PATH = DIR / 'recommended_clusters.joblib'
 MSK = timezone(timedelta(hours=3))
 MODEL_NAME = 'gemini-3.5-flash-lite'
+FALLBACK_MODEL = 'gemini-3.1-flash-lite'
 
 RULES = [
     ('поездки', r'авиакомпани|авиалини|турист|круиз|отел|мотел|курорт|аренде автомобил|прокат автомобил|базы отдыха|аттракцион'),
@@ -179,12 +180,7 @@ def build_prompt(regular, cluster_row, descriptions):
     return prompt
 
 
-def ask_gemini(prompt=None, api_key=None, model=MODEL_NAME, contents=None):
-    key = api_key or os.environ.get('GEMINI_API_KEY') or ''
-    if not key:
-        return None, 'Нет GEMINI_API_KEY'
-    if contents is None:
-        contents = [{'role': 'user', 'parts': [{'text': prompt}]}]
+def _ask_once(key, model, contents):
     url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key
     body = json.dumps({
         'contents': contents,
@@ -192,7 +188,7 @@ def ask_gemini(prompt=None, api_key=None, model=MODEL_NAME, contents=None):
     }).encode()
     req = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json'})
     try:
-        with urllib.request.urlopen(req, timeout=80) as resp:
+        with urllib.request.urlopen(req, timeout=40) as resp:
             result = json.load(resp)
     except urllib.error.HTTPError as error:
         detail = error.read().decode('utf-8', errors='replace')[:500]
@@ -206,6 +202,26 @@ def ask_gemini(prompt=None, api_key=None, model=MODEL_NAME, contents=None):
     if not texts:
         return None, 'Gemini не вернул текст'
     return '\n'.join(texts).strip(), None
+
+
+def ask_gemini(prompt=None, api_key=None, model=MODEL_NAME, contents=None):
+    key = api_key or os.environ.get('GEMINI_API_KEY') or ''
+    if not key:
+        return None, 'Нет GEMINI_API_KEY'
+    if contents is None:
+        contents = [{'role': 'user', 'parts': [{'text': prompt}]}]
+    models = [model]
+    if model == MODEL_NAME and FALLBACK_MODEL not in models:
+        models.append(FALLBACK_MODEL)
+    last_error = None
+    for name in models:
+        reply, error = _ask_once(key, name, contents)
+        if error is None:
+            return reply, None
+        last_error = error
+        if '503' not in error and 'UNAVAILABLE' not in error:
+            return None, error
+    return None, last_error
 
 
 def _plain(value):
