@@ -42,7 +42,7 @@ export function recommendClient(transactions, { text = true, messages = null, re
     const timer = setTimeout(() => {
       child.kill();
       finish({ error: "Рекомендация не успела собраться" });
-    }, 90000);
+    }, 200000);
     child.stdout.on("data", (chunk) => { out += chunk; });
     child.stderr.on("data", (chunk) => { err += chunk; });
     child.on("error", () => {

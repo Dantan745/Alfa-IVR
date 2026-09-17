@@ -14,7 +14,16 @@ DIR = Path(__file__).resolve().parent
 BUNDLE_PATH = DIR / 'recommended_clusters.joblib'
 MSK = timezone(timedelta(hours=3))
 MODEL_NAME = 'gemini-3.5-flash-lite'
-FALLBACK_MODEL = 'gemini-3.1-flash-lite'
+GEMINI_MODELS = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash',
+    'gemini-3.1-flash-lite-preview',
+    'gemini-flash-latest',
+    'gemini-3.6-flash',
+    'gemini-3.7-flash',
+]
 
 RULES = [
     ('поездки', r'авиакомпани|авиалини|турист|круиз|отел|мотел|курорт|аренде автомобил|прокат автомобил|базы отдыха|аттракцион'),
@@ -188,7 +197,7 @@ def _ask_once(key, model, contents):
     }).encode()
     req = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json'})
     try:
-        with urllib.request.urlopen(req, timeout=40) as resp:
+        with urllib.request.urlopen(req, timeout=18) as resp:
             result = json.load(resp)
     except urllib.error.HTTPError as error:
         detail = error.read().decode('utf-8', errors='replace')[:500]
@@ -204,24 +213,73 @@ def _ask_once(key, model, contents):
     return '\n'.join(texts).strip(), None
 
 
+def _contents_text(contents):
+    lines = []
+    for item in contents or []:
+        role = item.get('role') or 'user'
+        for part in item.get('parts') or []:
+            text = part.get('text')
+            if text:
+                lines.append(role + ': ' + text)
+    return '\n'.join(lines)
+
+
+def ask_yandex(contents):
+    key = os.environ.get('YANDEX_API_KEY') or ''
+    folder = os.environ.get('YANDEX_FOLDER_ID') or ''
+    if not key:
+        return None, 'Нет YANDEX_API_KEY'
+    if not folder:
+        return None, 'Нет YANDEX_FOLDER_ID'
+    url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion'
+    body = json.dumps({
+        'modelUri': 'gpt://' + folder + '/yandexgpt-lite/latest',
+        'completionOptions': {'stream': False, 'temperature': 0.3, 'maxTokens': 1200},
+        'messages': [{'role': 'user', 'text': _contents_text(contents)[:24000]}],
+    }).encode()
+    req = urllib.request.Request(url, data=body, headers={
+        'Content-Type': 'application/json',
+        'Authorization': 'Api-Key ' + key,
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            result = json.load(resp)
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode('utf-8', errors='replace')[:500]
+        return None, f'Yandex {error.code}: {detail}'
+    except urllib.error.URLError as error:
+        return None, f'Yandex: {error.reason}'
+    alternatives = result.get('result', {}).get('alternatives') or []
+    if not alternatives:
+        return None, 'Yandex не вернул текст'
+    text = alternatives[0].get('message', {}).get('text') or ''
+    if not text.strip():
+        return None, 'Yandex не вернул текст'
+    return text.strip(), None
+
+
 def ask_gemini(prompt=None, api_key=None, model=MODEL_NAME, contents=None):
     key = api_key or os.environ.get('GEMINI_API_KEY') or ''
-    if not key:
-        return None, 'Нет GEMINI_API_KEY'
     if contents is None:
         contents = [{'role': 'user', 'parts': [{'text': prompt}]}]
-    models = [model]
-    if model == MODEL_NAME and FALLBACK_MODEL not in models:
-        models.append(FALLBACK_MODEL)
+    models = list(GEMINI_MODELS)
+    if model and model not in models:
+        models.insert(0, model)
     last_error = None
-    for name in models:
-        reply, error = _ask_once(key, name, contents)
-        if error is None:
-            return reply, None
-        last_error = error
-        if '503' not in error and 'UNAVAILABLE' not in error:
-            return None, error
-    return None, last_error
+    if key:
+        for name in models:
+            reply, error = _ask_once(key, name, contents)
+            if error is None:
+                return reply, None
+            last_error = error
+    else:
+        last_error = 'Нет GEMINI_API_KEY'
+    reply, error = ask_yandex(contents)
+    if error is None:
+        return reply, None
+    if last_error and error:
+        return None, last_error + ' | ' + error
+    return None, last_error or error
 
 
 def _plain(value):
