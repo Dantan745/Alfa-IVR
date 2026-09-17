@@ -6,11 +6,7 @@ import java.util.Arrays
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
-/**
- * Хэши пароля/PIN. На API 24 нет PBKDF2WithHmacSHA256 — используем SHA1-вариант,
- * который есть на всех целевых устройствах. Итерации специально не огромные:
- * учебный прототип на слабом телефоне не должен «замирать» на логине.
- */
+/** PBKDF2-HMAC-SHA1: на API 24 нет варианта SHA256. 12 тысяч итераций, чтобы вход не подвисал. */
 object PasswordHasher {
     private const val ITERATIONS = 12_000
     private const val KEY_BITS = 256
