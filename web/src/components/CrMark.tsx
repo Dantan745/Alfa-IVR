@@ -1,6 +1,6 @@
 import mark from "../assets/cr-mark.png";
 
-/** Знак цифрового рубля с присланной картинки: круг и градиентный рубль. */
+/** Знак цифрового рубля. */
 export default function CrMark({ size = 64, title }: { size?: number; title?: string }) {
   return (
     <img

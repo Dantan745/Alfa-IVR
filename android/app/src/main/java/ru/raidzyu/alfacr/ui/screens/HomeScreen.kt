@@ -51,7 +51,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Главная 1-в-1 с Figma `HomePage.tsx`. */
+/** Главная. */
 @Composable
 fun HomeScreen(vm: AppViewModel, onNavigate: (String) -> Unit) {
     val user by vm.user.collectAsState()
