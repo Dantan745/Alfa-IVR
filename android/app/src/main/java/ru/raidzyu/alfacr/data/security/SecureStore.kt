@@ -5,10 +5,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 
-/**
- * Сессия в EncryptedSharedPreferences (API 1.0.0 — MasterKeys, работает с minSdk 24).
- * Если Keystore недоступен — fallback, чтобы не падать на чужом эмуляторе.
- */
+/** Сессия в EncryptedSharedPreferences. Если Keystore недоступен — обычные prefs, чтобы не падать. */
 class SecureStore(context: Context) {
     private val prefs: SharedPreferences = try {
         val alias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)

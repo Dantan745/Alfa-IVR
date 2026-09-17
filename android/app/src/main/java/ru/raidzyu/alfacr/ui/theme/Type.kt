@@ -8,7 +8,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import ru.raidzyu.alfacr.R
 
-/** Локальные TTF — без CDN Figma, чтобы вёрстка не ломалась офлайн. */
+/** Локальные шрифты, без загрузки с CDN. */
 val RobotoFamily = FontFamily(
     Font(R.font.roboto_regular, FontWeight.Normal),
     Font(R.font.roboto_medium, FontWeight.Medium),
