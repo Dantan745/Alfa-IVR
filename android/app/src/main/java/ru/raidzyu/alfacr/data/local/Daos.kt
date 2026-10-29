@@ -69,8 +69,9 @@ interface TransactionDao {
 
     @Query(
         """
-        SELECT COALESCE(SUM(CASE WHEN amountKopecks < 0 THEN -amountKopecks ELSE 0 END), 0)
-        FROM transactions WHERE userId = :userId AND createdAt >= :from AND type = 'expense'
+        SELECT COALESCE(SUM(-amountKopecks), 0)
+        FROM transactions
+        WHERE userId = :userId AND createdAt >= :from AND amountKopecks < 0 AND status != 'rejected'
         """,
     )
     suspend fun spentSince(userId: Long, from: Long): Long
@@ -85,8 +86,9 @@ interface TransactionDao {
 
     @Query(
         """
-        SELECT COALESCE(SUM(CASE WHEN amountKopecks > 0 THEN amountKopecks ELSE 0 END), 0)
-        FROM transactions WHERE userId = :userId AND createdAt >= :from
+        SELECT COALESCE(SUM(amountKopecks), 0)
+        FROM transactions
+        WHERE userId = :userId AND createdAt >= :from AND amountKopecks > 0 AND status != 'rejected'
         """,
     )
     suspend fun incomeSince(userId: Long, from: Long): Long

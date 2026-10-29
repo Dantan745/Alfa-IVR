@@ -167,11 +167,11 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (String) -> Unit) {
         item {
             Column(Modifier.padding(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatFigma("Расходы", "20 000 ₽", Cr.Danger, "Текущие расходы в месяце", Modifier.weight(1f), spent)
-                    StatFigma("Доходы", "65 000 ₽", Cr.Income, "Текущий доход в месяце", Modifier.weight(1f), income)
+                    StatFigma("Расходы", Cr.Danger, "Текущие расходы в месяце", Modifier.weight(1f), spent)
+                    StatFigma("Доходы", Cr.Income, "Текущий доход в месяце", Modifier.weight(1f), income)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatFigma("Прогноз", "0,00 ₽", Cr.Danger, "Ожидаемые расходы до конца месяца", Modifier.weight(1f), forecast, showZero = true, asExpense = true)
+                    StatFigma("Прогноз", Cr.Danger, "Ожидаемые расходы до конца месяца", Modifier.weight(1f), forecast, asExpense = true)
                     Box(Modifier.weight(1f).clip(RoundedCornerShape(28.dp)).background(Cr.Card).padding(16.dp)) {
                         Column {
                             Text("БЕЗОПАСНОСТЬ", color = Cr.Text2.copy(0.6f), fontSize = 10.sp, letterSpacing = 1.sp, fontFamily = RobotoFamily, fontWeight = FontWeight.Medium)
@@ -281,19 +281,16 @@ private fun QuickFigma(label: String, icon: ImageVector, onClick: () -> Unit) {
 @Composable
 private fun StatFigma(
     title: String,
-    fallback: String,
     color: Color,
     sub: String,
     modifier: Modifier,
-    live: Long?,
-    showZero: Boolean = false,
+    live: Long,
     asExpense: Boolean = false,
 ) {
-    val value = when {
-        live == null -> fallback
-        live > 0 -> (if (asExpense) "−" else "") + live.toRub() + " ₽"
-        showZero -> "0,00 ₽"
-        else -> fallback
+    val value = if (live == 0L) {
+        "0,00 ₽"
+    } else {
+        (if (asExpense) "−" else "") + kotlin.math.abs(live).toRub() + " ₽"
     }
     Column(modifier.clip(RoundedCornerShape(28.dp)).background(Cr.Card).padding(16.dp).height(110.dp)) {
         Text(title.uppercase(), color = Cr.Text2.copy(0.6f), fontSize = 10.sp, letterSpacing = 1.sp, fontFamily = RobotoFamily, fontWeight = FontWeight.Medium)
