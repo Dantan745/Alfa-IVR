@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import androidx.paging.cachedIn
@@ -76,22 +75,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val online = MutableStateFlow(true)
 
     init {
-        viewModelScope.launch(Dispatchers.IO) {
-            repo.ensureDemo()
-            userId.flatMapLatest { id ->
-                if (id <= 0) {
-                    flowOf(Triple(0L, 0L, 0L))
-                } else {
-                    repo.txs(id).transform {
-                        emit(Triple(repo.monthSpent(id), repo.monthIncome(id), repo.forecast(id)))
-                    }
-                }
-            }.collect { (monthSpent, monthIncome, monthForecast) ->
-                spent.value = monthSpent
-                income.value = monthIncome
-                forecast.value = monthForecast
-            }
-        }
+        viewModelScope.launch(Dispatchers.IO) { repo.ensureDemo() }
+        refreshStats()
     }
 
     fun refreshStats() {
