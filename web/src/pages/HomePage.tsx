@@ -1,5 +1,4 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { api } from "../api";
 import { formatHomeDate, formatRub, formatTxDate, greetingByHour, useWallet } from "../wallet";
 
 const ADVICE_KEY = "alfa-recommendation";
@@ -30,35 +29,7 @@ function Card({ className, style, children }: { className?: string; style?: CSSP
 export default function HomePage({ onNavigate }: HomePageProps) {
   const { user, wallet, txs, notes, flashIds } = useWallet();
   const [now, setNow] = useState(() => new Date());
-  const [advice, setAdvice] = useState("");
-  const [adviceWait, setAdviceWait] = useState(true);
-  const [canDiscuss, setCanDiscuss] = useState(false);
-  useEffect(() => {
-    const saved = sessionStorage.getItem(ADVICE_KEY) || "";
-    if (saved) {
-      setAdvice(saved);
-      setCanDiscuss(true);
-      setAdviceWait(false);
-      return;
-    }
-    let stop = false;
-    api.recommendation().then((res) => {
-      if (stop) return;
-      if (res.recommendation) {
-        setAdvice(res.recommendation);
-        setCanDiscuss(true);
-        sessionStorage.setItem(ADVICE_KEY, res.recommendation);
-      } else {
-        setAdvice(res.recommendation_error || res.error || "Рекомендация сейчас недоступна");
-      }
-      setAdviceWait(false);
-    }).catch((err: Error) => {
-      if (stop) return;
-      setAdvice(err.message || "Рекомендация сейчас недоступна");
-      setAdviceWait(false);
-    });
-    return () => { stop = true; };
-  }, []);
+  const advice = sessionStorage.getItem(ADVICE_KEY) || "";
   useEffect(() => {
     const tick = () => setNow(new Date());
     const id = setInterval(tick, 30_000);
@@ -75,8 +46,8 @@ export default function HomePage({ onNavigate }: HomePageProps) {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
   const monthTx = txs.filter((t) => t.createdAt >= monthStart && t.createdAt < monthEnd && t.status !== "rejected");
-  const spent = monthTx.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
-  const income = monthTx.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+  const spent = monthTx.filter((t) => t.type === "expense").reduce((s, t) => s + Math.abs(t.amount), 0);
+  const income = monthTx.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
   const day = now.getDate();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const daysLeft = Math.max(0, daysInMonth - day);
@@ -329,17 +300,18 @@ export default function HomePage({ onNavigate }: HomePageProps) {
         <p className="text-[var(--muted-60)] text-[10px] uppercase tracking-[1px] mb-2" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
           Рекомендация
         </p>
-        <p className="text-[var(--ink)] text-[13px] leading-snug" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
-          {adviceWait ? "Собираем рекомендацию…" : advice}
+        {advice && (
+        <p className="text-[var(--ink)] text-[13px] leading-snug mb-2" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+          {advice}
         </p>
+        )}
         <button
           type="button"
-          disabled={adviceWait || !canDiscuss}
           onClick={() => onNavigate("discuss")}
-          className="mt-3 h-[32px] px-3 rounded-full text-[12px] font-medium pressable"
+          className="h-[32px] px-3 rounded-full text-[12px] font-medium pressable"
           style={{
-            background: adviceWait || !canDiscuss ? "var(--avatar-from)" : "linear-gradient(128deg, var(--fill), var(--fill-2))",
-            color: adviceWait || !canDiscuss ? "var(--disabled-ink)" : "#0B1A1A",
+            background: "linear-gradient(128deg, var(--fill), var(--fill-2))",
+            color: "#0B1A1A",
           }}
         >
           Обсудить рекомендацию
