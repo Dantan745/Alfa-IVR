@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { spendForecast } from "../forecast";
 import { formatHomeDate, formatRub, formatTxDate, greetingByHour, useWallet } from "../wallet";
 
 const ADVICE_KEY = "alfa-recommendation";
@@ -27,7 +28,7 @@ function Card({ className, style, children }: { className?: string; style?: CSSP
 }
 
 export default function HomePage({ onNavigate }: HomePageProps) {
-  const { user, wallet, txs, notes, flashIds, forecast } = useWallet();
+  const { user, wallet, txs, notes, flashIds } = useWallet();
   const [now, setNow] = useState(() => new Date());
   const advice = sessionStorage.getItem(ADVICE_KEY) || "";
   useEffect(() => {
@@ -48,7 +49,8 @@ export default function HomePage({ onNavigate }: HomePageProps) {
   const monthTx = txs.filter((t) => t.createdAt >= monthStart && t.createdAt < monthEnd && t.status !== "rejected");
   const spent = monthTx.filter((t) => t.type === "expense").reduce((s, t) => s + Math.abs(t.amount), 0);
   const income = monthTx.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
-  const expected = forecast?.amount || 0;
+  const localForecast = spendForecast(txs, now.getTime());
+  const expected = localForecast.amount;
   const hidden = !!wallet?.hideBalance;
   const frozen = !!user?.frozen;
   return (
@@ -198,7 +200,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
             {expected > 0 ? `−${formatRub(expected)} ₽` : "0,00 ₽"}
           </p>
           <p className="text-[var(--ink-soft)] text-[11px] mt-1" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
-            {forecast?.month ? `Прогноз на ${forecast.month}` : "Траты в следующем месяце"}
+            {`На ${localForecast.month}, ${localForecast.basis.toLowerCase()}`}
           </p>
         </Card>
         <Card className="p-4" style={{ background: "var(--card)" }}>
@@ -297,7 +299,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
         <p className="text-[var(--muted-60)] text-[10px] uppercase tracking-[1px] mb-2" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
           Рекомендация
         </p>
-        {advice && (
+        {advice && !/gemini|error|кластер/i.test(advice) && (
         <p className="text-[var(--ink)] text-[13px] leading-snug mb-2" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
           {advice}
         </p>

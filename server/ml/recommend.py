@@ -1,6 +1,8 @@
+import calendar
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -224,6 +226,79 @@ def _contents_text(contents):
     return '\n'.join(lines)
 
 
+def _lmstudio_base():
+    return (os.environ.get('LMSTUDIO_BASE_URL') or 'http://127.0.0.1:1234').rstrip('/')
+
+
+def _lmstudio_model(base):
+    chosen = (os.environ.get('LMSTUDIO_MODEL') or '').strip()
+    if chosen:
+        return chosen
+    req = urllib.request.Request(base + '/v1/models')
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        data = json.load(resp)
+    skip = ('embed', 'diffusion', 'pony', 'whisper', 'flux', 'stable-diffusion')
+    for item in data.get('data') or []:
+        name = str(item.get('id') or '')
+        low = name.lower()
+        if name and not any(part in low for part in skip):
+            return name
+    return ''
+
+
+def _lmstudio_messages(contents):
+    messages = []
+    for item in contents or []:
+        role = 'assistant' if item.get('role') == 'model' else 'user'
+        parts = [part.get('text') for part in (item.get('parts') or []) if part.get('text')]
+        if parts:
+            messages.append({'role': role, 'content': '\n'.join(parts)[:24000]})
+    return messages
+
+
+def ask_lmstudio(contents):
+    base = _lmstudio_base()
+    try:
+        model = _lmstudio_model(base)
+    except urllib.error.URLError:
+        return None, 'LM Studio недоступен'
+    except Exception as error:
+        return None, f'LM Studio: {error}'
+    if not model:
+        return None, 'LM Studio: нет текстовой модели'
+    messages = _lmstudio_messages(contents)
+    if not messages:
+        return None, 'Нет сообщения'
+    body = json.dumps({
+        'model': model,
+        'messages': messages,
+        'temperature': 0.3,
+        'max_tokens': 900,
+        'stream': False,
+    }).encode()
+    req = urllib.request.Request(
+        base + '/v1/chat/completions',
+        data=body,
+        headers={'Content-Type': 'application/json'},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=170) as resp:
+            result = json.load(resp)
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode('utf-8', errors='replace')[:500]
+        return None, f'LM Studio {error.code}: {detail}'
+    except urllib.error.URLError as error:
+        return None, f'LM Studio недоступен: {error.reason}'
+    choices = result.get('choices') or []
+    if not choices:
+        return None, 'LM Studio не вернул текст'
+    message = choices[0].get('message') or {}
+    text = message.get('content') or ''
+    if not str(text).strip():
+        return None, 'LM Studio не вернул текст'
+    return str(text).strip(), None
+
+
 def ask_yandex(contents):
     key = os.environ.get('YANDEX_API_KEY') or ''
     folder = os.environ.get('YANDEX_FOLDER_ID') or ''
@@ -265,6 +340,10 @@ def ask_gemini(prompt=None, api_key=None, model=MODEL_NAME, contents=None):
     models = list(GEMINI_MODELS)
     if model and model not in models:
         models.insert(0, model)
+    local_reply, local_error = ask_lmstudio(contents)
+    if local_error is None:
+        return local_reply, None
+    local_down = str(local_error).startswith('LM Studio недоступен')
     last_error = None
     if key:
         for name in models:
@@ -277,9 +356,10 @@ def ask_gemini(prompt=None, api_key=None, model=MODEL_NAME, contents=None):
     reply, error = ask_yandex(contents)
     if error is None:
         return reply, None
-    if last_error and error:
-        return None, last_error + ' | ' + error
-    return None, last_error or error
+    parts = [item for item in (None if local_down else local_error, last_error, error) if item]
+    if local_down:
+        parts.append(local_error)
+    return None, ' | '.join(parts) if parts else local_error
 
 
 def _plain(value):
@@ -322,6 +402,28 @@ def discuss_client(rows, recommendation, messages, bundle=None):
     return {'reply': reply, 'recommendation_error': error}
 
 
+def formula_text(rows):
+    now = time.time()
+    total = 0.0
+    for row in rows or []:
+        try:
+            amount = float(row.get('amount') or 0)
+            created = float(row.get('createdAt') or row.get('created_at') or 0)
+        except (TypeError, ValueError):
+            continue
+        if created > 10_000_000_000:
+            created /= 1000
+        if amount < 0 and created >= now - 30 * 86400:
+            total += -amount
+    shifted = time.gmtime(now + 3 * 3600)
+    next_month = shifted.tm_mon % 12
+    year = shifted.tm_year + (1 if shifted.tm_mon == 12 else 0)
+    days_next = calendar.monthrange(year, next_month + 1)[1]
+    amount = int(round(total / 30 * days_next))
+    name = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'][next_month]
+    return f'На {name} около {amount} ₽. Это средние траты за последние 30 дней.'
+
+
 def infer_client(rows, bundle=None, with_text=True):
     frame = expenses_from_rows(rows)
     if frame.empty:
@@ -345,6 +447,9 @@ def infer_client(rows, bundle=None, with_text=True):
     if with_text:
         prompt = build_prompt(regular, cluster_row, descriptions)
         recommendation, error = ask_gemini(prompt)
+        if error or not recommendation:
+            recommendation = formula_text(rows)
+            error = None
     return {
         'regularity': regular.to_dict(orient='records'),
         'cluster_features': {column: _plain(cluster_row[column]) for column in CLUSTER_COLUMNS},

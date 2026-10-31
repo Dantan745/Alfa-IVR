@@ -1,12 +1,23 @@
-Открыть в браузере: https://alfapaycr.app
+# Альфа Кошелёк ЦР
 
-Демо-вход: `ivan@alfa.demo` / `Demo1234`. Для демо код — любые 4 цифры. PIN в приложении: `1234`.
+Учебный кошелёк цифрового рубля. Внутри баланс, перевод другому клиенту, оплата по QR, пополнение и лимиты. На главной отдельно видно, сколько ушло и пришло в этом месяце, и прогноз на следующий: берём траты за последние 30 дней и растягиваем на число дней следующего месяца.
+
+Сайт: https://alfapaycr.app
+
+Демо-вход: ivan@alfa.demo / Demo1234
+Код для демо — любые 4 цифры. PIN в приложении: 1234
+
+Админка, где клиенты, операции и настройки кодов:
+https://alfapaycr.app/admin
+Пароль: 4255678f0e88910ab3d7bb5e91678f0b0c613b9c3800238d
 
 ## Скачать
 
-Один адрес для QR-кода — эта страница. С неё ставятся обе версии.
+QR лучше вести на эту страницу: отсюда ставятся обе версии.
 
-- [Windows](https://github.com/Dantan745/Alfa-IVR/releases/download/install/AlfaKoshelekCR-Setup.exe) — установщик, ставится как обычная программа.
-- [Android](https://github.com/Dantan745/Alfa-IVR/releases/download/install/AlfaKoshelekCR.apk) — файл приложения. На телефоне нужно разрешить установку из файла.
+- Windows: https://github.com/Dantan745/Alfa-IVR/releases/download/install/AlfaKoshelekCR-Setup.exe
+- Android: https://github.com/Dantan745/Alfa-IVR/releases/download/install/AlfaKoshelekCR.apk
 
-Телефон и компьютер должны быть в одной Wi-Fi, если открываете кошелёк с компьютера, на котором он запущен: в адресе вместо localhost будет IP этого компьютера, порт 8443.
+На Android при установке нужно разрешить установку из файла.
+
+Если запускаете проект у себя, в папке нужен Node.js 20 и PostgreSQL, дальше start.bat. Сайт откроется на порту 8443, сервер на 8787. Локальная админка: http://localhost:8443/admin , пароль AlfaDev-2026.

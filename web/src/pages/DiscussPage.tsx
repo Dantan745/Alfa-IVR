@@ -30,11 +30,11 @@ export default function DiscussPage({ onBack }: { onBack: () => void }) {
     setWait(true);
     api.recommendation().then((res) => {
       if (stop) return;
-      if (res.recommendation) {
+      if (res.recommendation && !/gemini|not supported|"error"/i.test(res.recommendation)) {
         setAdvice(res.recommendation);
         sessionStorage.setItem(ADVICE_KEY, res.recommendation);
       } else {
-        setError(res.recommendation_error || res.error || "Рекомендация сейчас недоступна");
+        setError("Сейчас нет текстовой рекомендации. На главной прогноз считается по тратам за 30 дней.");
       }
       setWait(false);
     }).catch((err: Error) => {
@@ -59,7 +59,9 @@ export default function DiscussPage({ onBack }: { onBack: () => void }) {
     setError("");
     try {
       const res = await api.recommendationChat(advice, next);
-      const reply = res.reply || res.recommendation_error || res.error || "Ответ не пришёл";
+      const reply = res.reply && !/gemini|not supported|"error"/i.test(res.reply)
+        ? res.reply
+        : "Не получилось ответить. Прогноз на главной считается по тратам за 30 дней.";
       const done = [...next, { role: "model" as const, text: reply }];
       setTurns(done);
       sessionStorage.setItem(CHAT_KEY, JSON.stringify(done));
