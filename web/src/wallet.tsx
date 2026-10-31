@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, getToken, setToken, type Snapshot } from "./api";
+import { clearAdviceStorage } from "./adviceStore";
 import { clearBioPassed, markBioPassed } from "./bio";
+import { playDenied, playPaid, unlockSound } from "./sounds";
 import type { DbContact, DbNote, DbTx, DbUser, DbWallet } from "./db";
 
 export type Tx = DbTx;
@@ -83,10 +85,10 @@ type WalletCtx = {
   pendingPayee: string;
   setPendingPayee: (v: string) => void;
   login: (email: string, password: string, code?: string) => Promise<string | null>;
-  requestCode: (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) => Promise<{ via?: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string; error?: string }>;
-  forgotPassword: (login: string, channel?: "sms" | "email") => Promise<{ via?: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string; error?: string }>;
+  requestCode: (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "telegram" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) => Promise<{ via?: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string; error?: string }>;
+  forgotPassword: (login: string, channel?: "sms" | "telegram" | "email") => Promise<{ via?: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string; error?: string }>;
   resetPassword: (login: string, code: string, password: string) => Promise<string | null>;
-  register: (u: Omit<DbUser, "passwordHash" | "walletId" | "createdAt"> & { password: string; code: string; channel?: "sms" | "email" }) => Promise<string | null>;
+  register: (u: Omit<DbUser, "passwordHash" | "walletId" | "createdAt"> & { password: string; code: string; channel?: "sms" | "telegram" | "email" }) => Promise<string | null>;
   logout: () => void;
   transfer: (payee: string, amount: number, comment?: string, code?: string) => Promise<string | null>;
   topUp: (amount: number) => Promise<string | null>;
@@ -98,11 +100,12 @@ type WalletCtx = {
   toggleFav: (id: string) => Promise<void>;
   removeContact: (id: string) => Promise<void>;
   bulkPay: (rows: { name: string; phone: string; amount: number }[], code?: string) => Promise<{ ok: number; fail: number; error?: string }>;
-  updateSecurity: (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "email" }) => Promise<void>;
+  updateSecurity: (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "telegram" | "email" }) => Promise<void>;
   updateLimits: (patch: Record<string, number>) => Promise<string | null>;
   addSupportNote: (text: string) => Promise<void>;
   setToast: (t: string) => void;
   flashIds: string[];
+  forecast: Snapshot["forecast"] | null;
 };
 
 const Ctx = createContext<WalletCtx | null>(null);
@@ -118,6 +121,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [pendingPayee, setPendingPayee] = useState("");
   const [flashIds, setFlashIds] = useState<string[]>([]);
+  const [forecast, setForecast] = useState<Snapshot["forecast"] | null>(null);
   const knownTx = useRef<Set<string>>(new Set());
   const seenOnce = useRef(false);
 
@@ -130,15 +134,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setTxs(snap.txs);
     setNotes(snap.notes);
     setContacts(snap.contacts);
+    setForecast(snap.forecast || null);
     setAuthed(true);
     if (fresh.length) {
       setFlashIds(fresh);
       window.setTimeout(() => setFlashIds((prev) => prev.filter((id) => !fresh.includes(id))), 1400);
     }
-    if (seenOnce.current && !opts.quiet && fresh.length) {
-      const income = (snap.txs || []).find((t) => fresh.includes(t.id) && t.amount > 0);
-      if (income) setToast("Поступили средства · баланс обновлён");
-      else setToast("Операции обновлены");
+    if (seenOnce.current && fresh.length) {
+      playPaid();
+      if (!opts.quiet) {
+        const income = (snap.txs || []).find((t) => fresh.includes(t.id) && t.amount > 0);
+        if (income) setToast("Поступили средства · баланс обновлён");
+        else setToast("Операции обновлены");
+      }
     }
     seenOnce.current = true;
   }, []);
@@ -157,6 +165,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
     })();
   }, [apply]);
+
+  useEffect(() => {
+    const unlock = () => unlockSound();
+    window.addEventListener("pointerdown", unlock);
+    return () => window.removeEventListener("pointerdown", unlock);
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -189,7 +203,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     };
   }, [authed, apply]);
 
-  const requestCode = useCallback(async (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) => {
+  const requestCode = useCallback(async (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "telegram" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) => {
     try {
       const r = await api.requestCode(opts);
       return { via: r.via, masked: r.masked, fallback: r.fallback, needLink: r.needLink, botUrl: r.botUrl };
@@ -198,7 +212,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [fail]);
 
-  const forgotPassword = useCallback(async (loginId: string, channel?: "sms" | "email") => {
+  const forgotPassword = useCallback(async (loginId: string, channel?: "sms" | "telegram" | "email") => {
     try {
       const r = await api.forgot(loginId, channel);
       return { via: r.via, masked: r.masked, fallback: r.fallback, needLink: r.needLink, botUrl: r.botUrl };
@@ -209,6 +223,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const resetPassword = useCallback(async (loginId: string, code: string, password: string) => {
     try {
+      clearAdviceStorage();
       apply(await api.reset(loginId, code, password), { quiet: true });
       return null;
     } catch (e) {
@@ -218,6 +233,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string, code?: string) => {
     try {
+      clearAdviceStorage();
       apply(await api.login(email, password, code), { quiet: true });
       markBioPassed();
       return null;
@@ -226,8 +242,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [apply, fail]);
 
-  const register = useCallback(async (input: Omit<DbUser, "passwordHash" | "walletId" | "createdAt"> & { password: string; code: string; channel?: "sms" | "email" }) => {
+  const register = useCallback(async (input: Omit<DbUser, "passwordHash" | "walletId" | "createdAt"> & { password: string; code: string; channel?: "sms" | "telegram" | "email" }) => {
     try {
+      clearAdviceStorage();
       apply(await api.register({
         lastName: input.lastName,
         firstName: input.firstName,
@@ -247,6 +264,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [apply, fail]);
 
   const logout = useCallback(() => {
+    clearAdviceStorage();
     clearBioPassed();
     void api.logout();
     setAuthed(false);
@@ -267,6 +285,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setToast("Перевод отправлен");
       return null;
     } catch (e) {
+      playDenied();
       return fail(e);
     }
   }, [apply, fail]);
@@ -277,6 +296,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setToast("Баланс пополнен");
       return null;
     } catch (e) {
+      playDenied();
       return fail(e);
     }
   }, [apply, fail]);
@@ -287,6 +307,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setToast("Оплата прошла");
       return null;
     } catch (e) {
+      playDenied();
       return fail(e);
     }
   }, [apply, fail]);
@@ -344,6 +365,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setToast(`Массовый платёж: ${snap.ok || 0} успешно`);
       return { ok: snap.ok || 0, fail: snap.fail || 0 };
     } catch (e) {
+      playDenied();
       return { ok: 0, fail: rows.length, error: fail(e) };
     }
   }, [apply, fail]);
@@ -360,7 +382,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [apply, fail]);
 
-  const updateSecurity = useCallback(async (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "email" }) => {
+  const updateSecurity = useCallback(async (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "telegram" | "email" }) => {
     try {
       apply(await api.updateSecurity(patch), { quiet: true });
       setToast("Настройки сохранены");
@@ -380,12 +402,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, setPendingPayee, flashIds,
+      ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, setPendingPayee, flashIds, forecast,
       login, requestCode, forgotPassword, resetPassword, register, logout, transfer, topUp, qrPay,
       copyWalletId, markNotesRead, markNoteRead, addContact, toggleFav, removeContact, bulkPay,
       updateSecurity, updateLimits, addSupportNote, setToast,
     }),
-    [ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, flashIds, login, requestCode, forgotPassword, resetPassword, register, logout, transfer, topUp, qrPay, copyWalletId, markNotesRead, markNoteRead, addContact, toggleFav, removeContact, bulkPay, updateSecurity, updateLimits, addSupportNote],
+    [ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, flashIds, forecast, login, requestCode, forgotPassword, resetPassword, register, logout, transfer, topUp, qrPay, copyWalletId, markNotesRead, markNoteRead, addContact, toggleFav, removeContact, bulkPay, updateSecurity, updateLimits, addSupportNote],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

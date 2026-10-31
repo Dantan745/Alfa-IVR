@@ -27,7 +27,7 @@ function Card({ className, style, children }: { className?: string; style?: CSSP
 }
 
 export default function HomePage({ onNavigate }: HomePageProps) {
-  const { user, wallet, txs, notes, flashIds } = useWallet();
+  const { user, wallet, txs, notes, flashIds, forecast } = useWallet();
   const [now, setNow] = useState(() => new Date());
   const advice = sessionStorage.getItem(ADVICE_KEY) || "";
   useEffect(() => {
@@ -48,10 +48,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
   const monthTx = txs.filter((t) => t.createdAt >= monthStart && t.createdAt < monthEnd && t.status !== "rejected");
   const spent = monthTx.filter((t) => t.type === "expense").reduce((s, t) => s + Math.abs(t.amount), 0);
   const income = monthTx.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
-  const day = now.getDate();
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const daysLeft = Math.max(0, daysInMonth - day);
-  const expected = day > 0 ? Math.round((spent / day) * daysLeft) : 0;
+  const expected = forecast?.amount || 0;
   const hidden = !!wallet?.hideBalance;
   const frozen = !!user?.frozen;
   return (
@@ -201,7 +198,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
             {expected > 0 ? `−${formatRub(expected)} ₽` : "0,00 ₽"}
           </p>
           <p className="text-[var(--ink-soft)] text-[11px] mt-1" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
-            Ожидаемые расходы до конца месяца
+            {forecast?.month ? `Прогноз на ${forecast.month}` : "Траты в следующем месяце"}
           </p>
         </Card>
         <Card className="p-4" style={{ background: "var(--card)" }}>

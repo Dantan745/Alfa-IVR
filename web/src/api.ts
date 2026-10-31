@@ -7,6 +7,7 @@ export type Snapshot = {
   txs: DbTx[];
   notes: DbNote[];
   contacts: DbContact[];
+  forecast?: { amount: number; month: string; year: number; basis: string; samples: number };
   ok?: number;
   fail?: number;
 };
@@ -63,11 +64,11 @@ function remember(snap: Snapshot) {
 
 export const api = {
   health: () => req<{ ok: boolean }>("/api/health"),
-  requestCode: (body: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) =>
+  requestCode: (body: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "telegram" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) =>
     req<{ ok: boolean; via: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string }>("/api/auth/request-code", { method: "POST", body: JSON.stringify(body) }),
   login: (email: string, password: string, code?: string) =>
     req<Snapshot>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password, code }) }).then(remember),
-  forgot: (login: string, channel?: "sms" | "email") =>
+  forgot: (login: string, channel?: "sms" | "telegram" | "email") =>
     req<{ ok: boolean; via: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string }>("/api/auth/forgot", { method: "POST", body: JSON.stringify({ login, channel: channel || "email" }) }),
   reset: (login: string, code: string, password: string) =>
     req<Snapshot>("/api/auth/reset", { method: "POST", body: JSON.stringify({ login, code, password }) }).then(remember),
@@ -91,7 +92,7 @@ export const api = {
   markNotesRead: () => req<Snapshot>("/api/notes/read-all", { method: "POST" }),
   markNoteRead: (id: string) =>
     req<Snapshot>("/api/notes/" + encodeURIComponent(id) + "/read", { method: "POST" }),
-  updateSecurity: (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "email" }) =>
+  updateSecurity: (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "telegram" | "email" }) =>
     req<Snapshot>("/api/security", { method: "PATCH", body: JSON.stringify(patch) }),
   updateLimits: (patch: Record<string, number>) =>
     req<Snapshot>("/api/limits", { method: "PATCH", body: JSON.stringify(patch) }),

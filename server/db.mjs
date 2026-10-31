@@ -436,7 +436,7 @@ export async function insertUser(user) {
     [
       user.email, user.phone, user.walletId, user.passwordHash,
       user.lastName || "", user.firstName || "", user.middleName || "", user.passport || "",
-      user.otpChannel === "email" ? "email" : "sms",
+      user.otpChannel === "email" || user.otpChannel === "telegram" ? user.otpChannel : "sms",
       user.loginAttempts || 1, user.lastLoginAttempts || 1,
       Boolean(user.frozen), user.freezeReason || "", user.frozenAt || null, user.frozenBy || "",
       user.frozenTxId || null, user.lockedUntil || null, user.createdAt || Date.now(),
@@ -456,7 +456,7 @@ export async function saveUser(user) {
      WHERE email = $1`,
     [
       user.email, user.phone, user.passwordHash, user.lastName || "", user.firstName || "", user.middleName || "",
-      user.passport || "", user.otpChannel === "email" ? "email" : "sms",
+      user.passport || "", user.otpChannel === "email" || user.otpChannel === "telegram" ? user.otpChannel : "sms",
       Math.max(1, Number(user.loginAttempts) || 1), Math.max(1, Number(user.lastLoginAttempts) || 1),
       Boolean(user.frozen), user.freezeReason || "", user.frozenAt || null, user.frozenBy || "", user.frozenTxId || null, user.lockedUntil || null,
     ],

@@ -7,6 +7,8 @@ import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
+data class SpendPoint(val createdAt: Long, val amountKopecks: Long)
+
 @Dao
 interface UserDao {
     @Insert
@@ -74,6 +76,14 @@ interface TransactionDao {
         """,
     )
     suspend fun spentSince(userId: Long, from: Long): Long
+
+    @Query(
+        """
+        SELECT createdAt, amountKopecks FROM transactions
+        WHERE userId = :userId AND createdAt >= :from AND type = 'expense' AND amountKopecks < 0
+        """,
+    )
+    suspend fun expensePoints(userId: Long, from: Long): List<SpendPoint>
 
     @Query(
         """

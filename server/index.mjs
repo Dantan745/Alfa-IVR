@@ -4,7 +4,8 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { deliver, ensureTelegramWebhook, handleTelegramUpdate, hydrateNotify, loadNotify, maskPhone, phoneDeliveryPlan, publicNotify, saveNotify, telegramHookOk } from "./notify.mjs";
+import { deliver, handleTelegramUpdate, hydrateNotify, loadNotify, maskPhone, phoneDeliveryPlan, publicNotify, saveNotify, startTelegramInbox, telegramHookOk } from "./notify.mjs";
+import { forecastNextMonth } from "./forecast.mjs";
 import { buildReport, extractFeatures, runCustomModel, scoreWithFriendModelAsync } from "./ml/index.mjs";
 import { recommendClient } from "./ml/recommend.mjs";
 import { buildFraudSample } from "./ml/features.mjs";
@@ -276,12 +277,14 @@ async function publicNotes(email) {
 async function snapshot(email) {
   const user = await db.getUser(email);
   const wallet = await db.getWallet(email);
-  const txs = (await db.listTxsByEmail(email)).map(publicTx);
+  const rawTxs = await db.listTxsByEmail(email);
+  const txs = rawTxs.map(publicTx);
   const notes = await publicNotes(email);
   const contacts = await db.listContacts(email);
   const L = await limitsOf(email);
   const usage = await usageOf(email);
-  return { user: publicUser(user), wallet: publicWallet(wallet, { limits: L, usage }), txs, notes, contacts };
+  const forecast = forecastNextMonth(rawTxs);
+  return { user: publicUser(user), wallet: publicWallet(wallet, { limits: L, usage }), txs, notes, contacts, forecast };
 }
 
 function requestDeviceId(req) {
@@ -730,8 +733,10 @@ function readCookie(req, name) {
   return "";
 }
 
-function setAdminCookie(res, clear) {
-  const secure = PRODUCTION ? "; Secure" : "";
+function setAdminCookie(res, clear, req) {
+  const proto = String(req?.headers?.["x-forwarded-proto"] || "").split(",")[0].trim();
+  const https = proto === "https" || req?.socket?.encrypted === true;
+  const secure = https ? "; Secure" : "";
   const value = clear ? "" : adminCookieValue();
   const age = clear ? 0 : 12 * 60 * 60;
   res.setHeader("Set-Cookie", `${ADMIN_COOKIE}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${secure}`);
@@ -843,7 +848,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "POST" && (p === "/api/auth/request-code" || p === "/api/otp/send")) {
         const b = await readBody(req);
         const purpose = ["login", "register", "pay"].includes(b.purpose) ? b.purpose : "login";
-        const channel = b.channel === "email" || b.channel === "sms" ? b.channel : "";
+        const channel = b.channel === "email" || b.channel === "sms" || b.channel === "telegram" ? b.channel : "";
         const authed = await authEmail(req);
 
         if (purpose === "pay") {
@@ -856,7 +861,7 @@ const server = http.createServer(async (req, res) => {
           }
           const user = await db.getUser(authed);
           const ch = bulk ? "email" : (channel || user.otpChannel || "sms");
-          if (ch !== "email") {
+          if (ch === "telegram") {
             const plan = await phoneDeliveryPlan(user.phone);
             if (plan.mode === "link") return send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: plan.botUrl, masked: maskPhone(user.phone) });
           }
@@ -878,7 +883,7 @@ const server = http.createServer(async (req, res) => {
           if (await db.getUser(email)) return send(res, 400, { error: "Такой email уже зарегистрирован" });
           if (await phoneTaken(phone, email)) return send(res, 400, { error: "Этот номер телефона уже занят" });
           const ch = channel || "sms";
-          if (ch !== "email") {
+          if (ch === "telegram") {
             const plan = await phoneDeliveryPlan(phone);
             if (plan.mode === "link") return send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: plan.botUrl, masked: maskPhone(phone) });
           }
@@ -902,7 +907,7 @@ const server = http.createServer(async (req, res) => {
         }
         if (user.email === DEMO_EMAIL) return send(res, 200, { ok: true, via: "demo", masked: "демо" });
         const ch = channel || user.otpChannel || "sms";
-        if (ch !== "email") {
+        if (ch === "telegram") {
           const plan = await phoneDeliveryPlan(user.phone);
           if (plan.mode === "link") return send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: plan.botUrl, masked: maskPhone(user.phone) });
         }
@@ -941,7 +946,7 @@ const server = http.createServer(async (req, res) => {
           passport: String(b.passport || "").trim(),
           walletId: "WLT-" + crypto.randomBytes(4).toString("hex").toUpperCase() + "-ЦР",
           createdAt: Date.now(),
-          otpChannel: b.channel === "email" ? "email" : "sms",
+          otpChannel: b.channel === "email" || b.channel === "telegram" ? b.channel : "sms",
           loginAttempts: 1,
           lastLoginAttempts: 1,
           devices: deviceId ? [deviceId] : [],
@@ -992,13 +997,13 @@ const server = http.createServer(async (req, res) => {
         if (wait) return send(res, 429, { error: wait });
         if (user.frozen) return send(res, 403, { error: "Счёт заблокирован. Обратитесь в поддержку." });
         if (user.email === DEMO_EMAIL) return send(res, 200, { ok: true, via: "demo", masked: "демо" });
-        const ch = b.channel === "sms" ? "sms" : "email";
-        if (ch !== "email") {
+        const ch = b.channel === "sms" || b.channel === "telegram" ? b.channel : "email";
+        if (ch === "telegram") {
           const plan = await phoneDeliveryPlan(user.phone);
           if (plan.mode === "link") return send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: plan.botUrl, masked: maskPhone(user.phone) });
         }
         try {
-          const rec = await putCode("reset", user.email, ch, ch === "sms" ? user.phone : user.email);
+          const rec = await putCode("reset", user.email, ch, ch === "email" ? user.email : user.phone);
           if (!PRODUCTION) console.log(`[код reset] ${user.email} → ${rec.code} (${ch})`);
           res.otpJob = { channel: ch, phone: user.phone, email: user.email, code: rec.code, purpose: "reset", owner: user.email };
         } catch (e) {
@@ -1036,13 +1041,13 @@ const server = http.createServer(async (req, res) => {
           tooMany(adminBucket, 12, 15 * 60 * 1000);
           return send(res, 401, { error: "Неверный ключ администратора" });
         }
-        setAdminCookie(res, false);
+        setAdminCookie(res, false, req);
         send(res, 200, { ok: true });
         return;
       }
       if (req.method === "POST" && p === "/api/admin/logout") {
         if (adminSessionOk(req) || adminKeyOk(adminKey)) adminEpoch += 1;
-        setAdminCookie(res, true);
+        setAdminCookie(res, true, req);
         send(res, 200, { ok: true });
         return;
       }
@@ -1559,7 +1564,7 @@ const server = http.createServer(async (req, res) => {
         if (typeof b.hideBalance === "boolean") w.hideBalance = b.hideBalance;
         if (typeof b.pin === "string" && b.pin) w.pin = await hashPassword(b.pin);
         await db.saveWallet(w);
-        if (b.otpChannel === "email" || b.otpChannel === "sms") {
+        if (b.otpChannel === "email" || b.otpChannel === "sms" || b.otpChannel === "telegram") {
           const user = await db.getUser(email);
           user.otpChannel = b.otpChannel;
           await db.saveUser(user);
@@ -1634,7 +1639,7 @@ const server = http.createServer(async (req, res) => {
 
 await db.initDb();
 await hydrateNotify();
-ensureTelegramWebhook().catch((e) => console.warn("Telegram webhook:", e.message));
+startTelegramInbox();
 
 server.listen(PORT, HOST, () => {
   const lan = lanAddresses();

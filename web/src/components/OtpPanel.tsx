@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 export const PAY_OTP_LIMIT = 10000;
 
-export type OtpChannel = "sms" | "email";
+export type OtpChannel = "sms" | "telegram" | "email";
 
 export function ChannelPick({
   channel,
@@ -15,12 +15,16 @@ export function ChannelPick({
     <div className="mb-4 rounded-[16px] p-3" style={{ background: "var(--line)", border: "1px solid var(--stroke-soft)" }}>
       <p className="text-[var(--muted-70)] text-[12px] uppercase tracking-[1px] mb-2">Куда отправить код</p>
       <label className="flex items-start gap-3 mb-2 cursor-pointer">
+        <input type="radio" className="mt-1 accent-[var(--accent)]" checked={channel === "telegram"} onChange={() => onChange("telegram")} />
+        <span className="text-[var(--ink)] text-[14px]">В Telegram на этот номер</span>
+      </label>
+      <label className="flex items-start gap-3 mb-2 cursor-pointer">
         <input type="radio" className="mt-1 accent-[var(--accent)]" checked={channel === "sms"} onChange={() => onChange("sms")} />
-        <span className="text-[var(--ink)] text-[14px]">На телефон в Telegram</span>
+        <span className="text-[var(--ink)] text-[14px]">Обычное SMS на телефон</span>
       </label>
       <label className="flex items-start gap-3 cursor-pointer">
         <input type="radio" className="mt-1 accent-[var(--accent)]" checked={channel === "email"} onChange={() => onChange("email")} />
-        <span className="text-[var(--ink)] text-[14px]">Телефон не работает — отправить на почту</span>
+        <span className="text-[var(--ink)] text-[14px]">На почту</span>
       </label>
     </div>
   );
@@ -57,7 +61,7 @@ export default function OtpPanel({
         inputMode="numeric"
         value={code}
         onChange={(e) => onCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-        placeholder="4–6 цифр из Telegram или письма"
+        placeholder="4–6 цифр из SMS, Telegram или письма"
         className="w-full bg-[var(--field)] border-2 border-[var(--stroke)] rounded-[17px] px-4 py-3.5 text-[var(--ink)] text-[18px] tracking-[6px] text-center outline-none mb-2"
       />
       {botUrl && (

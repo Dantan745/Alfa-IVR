@@ -44,7 +44,7 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
   const [otpOpen, setOtpOpen] = useState(false);
   const [otpBusy, setOtpBusy] = useState(false);
   const [otpCode, setOtpCode] = useState("");
-  const [otpChannel, setOtpChannel] = useState<OtpChannel>(user?.otpChannel === "email" ? "email" : "sms");
+  const [otpChannel, setOtpChannel] = useState<OtpChannel>(user?.otpChannel === "email" || user?.otpChannel === "telegram" ? user.otpChannel : "sms");
   const [otpHint, setOtpHint] = useState("");
   const [otpBot, setOtpBot] = useState("");
 

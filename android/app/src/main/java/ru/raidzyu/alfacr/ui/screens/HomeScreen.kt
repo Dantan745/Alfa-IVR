@@ -171,7 +171,7 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (String) -> Unit) {
                     StatFigma("Доходы", "65 000 ₽", Cr.Income, "Текущий доход в месяце", Modifier.weight(1f), income)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatFigma("Прогноз", "0,00 ₽", Cr.Danger, "Ожидаемые расходы до конца месяца", Modifier.weight(1f), forecast, showZero = true, asExpense = true)
+                    StatFigma("Прогноз", "0,00 ₽", Cr.Danger, "Траты в следующем месяце", Modifier.weight(1f), forecast, showZero = true, asExpense = true)
                     Box(Modifier.weight(1f).clip(RoundedCornerShape(28.dp)).background(Cr.Card).padding(16.dp)) {
                         Column {
                             Text("БЕЗОПАСНОСТЬ", color = Cr.Text2.copy(0.6f), fontSize = 10.sp, letterSpacing = 1.sp, fontFamily = RobotoFamily, fontWeight = FontWeight.Medium)

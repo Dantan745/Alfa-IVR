@@ -19,6 +19,7 @@ server/.env
 server/cloudflared.exe
 .npm-cache
 *.log
+Презентация-сервер.pptx
 fly-deploy.log
 public-url.txt
 _h1.txt

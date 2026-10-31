@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import nodemailer from "nodemailer";
 import crypto from "node:crypto";
+import dns from "node:dns/promises";
 import { isRuMobile, ruMobileDigits } from "./phone.mjs";
 import { getTelegramChat, readNotify, saveTelegramChat, writeNotify } from "./db.mjs";
 
@@ -166,16 +167,72 @@ export async function handleTelegramUpdate(update) {
   );
 }
 
+let telegramPolling = false;
+let telegramOffset = 0;
+
+export function startTelegramInbox() {
+  const token = telegramToken();
+  if (!token) {
+    console.warn("[telegram] токен бота не задан, коды в Telegram не отправляются");
+    return;
+  }
+  if (process.env.NODE_ENV === "production") {
+    ensureTelegramWebhook().catch((e) => console.warn("Telegram webhook:", e.message));
+    return;
+  }
+  if (telegramPolling) return;
+  telegramPolling = true;
+  fetch(`https://api.telegram.org/bot${token}/deleteWebhook`, { method: "POST" })
+    .catch(() => {})
+    .finally(() => pollTelegram());
+}
+
+async function pollTelegram() {
+  if (!telegramPolling) return;
+  const token = telegramToken();
+  if (!token) return;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates?timeout=25&offset=${telegramOffset}`, {
+      signal: AbortSignal.timeout(35000),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      for (const update of data.result || []) {
+        telegramOffset = Number(update.update_id) + 1;
+        await handleTelegramUpdate(update);
+      }
+    } else if (/webhook/i.test(String(data.description || ""))) {
+      await fetch(`https://api.telegram.org/bot${token}/deleteWebhook`, { method: "POST" }).catch(() => {});
+    } else if (data.description) {
+      console.warn("[telegram]", data.description);
+    }
+  } catch (e) {
+    console.warn("[telegram]", e.message);
+  }
+  setTimeout(pollTelegram, 1000);
+}
+
 export async function ensureTelegramWebhook() {
   const token = telegramToken();
   if (!token || process.env.NODE_ENV !== "production") return;
   const secret = crypto.createHash("sha256").update(`tg|${token}`).digest("hex").slice(0, 32);
+  const url = `${String(process.env.PUBLIC_ORIGIN || "https://alfa-koshelek-cr.fly.dev").replace(/\/$/, "")}/api/telegram/hook`;
+  const hookHost = new URL(url).hostname;
+  let ip = "";
+  try {
+    const ips = await dns.resolve4(hookHost);
+    ip = ips[0] || "";
+  } catch (e) {
+    console.warn("Telegram webhook: нет IPv4 у", hookHost, e.message);
+  }
+  if (!ip) return;
   const res = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      url: "https://alfa-koshelek-cr.fly.dev/api/telegram/hook",
+      url,
       secret_token: secret,
+      ...(ip ? { ip_address: ip } : {}),
       allowed_updates: ["message"],
     }),
   });
@@ -300,17 +357,19 @@ export async function deliver({ channel, phone, email, code, purpose }) {
     return tryEmail(cfg, email, code, mailText);
   }
 
-  const token = telegramToken(cfg);
-  if (token && phone) {
+  if (channel === "telegram") {
+    const token = telegramToken(cfg);
+    if (!token) throw new Error("Telegram-бот не подключён. Выберите SMS или почту.");
+    if (!phone) throw new Error("Нет номера телефона для Telegram.");
     const chatId = await getTelegramChat(phone);
-    if (chatId) {
-      await sendTelegram(token, chatId, mailText);
-      return { via: "telegram", masked: maskPhone(phone) };
+    if (!chatId) {
+      const err = new Error("Сначала откройте бота и нажмите «Поделиться номером», затем запросите код ещё раз.");
+      err.needLink = true;
+      err.botUrl = botUrl(cfg);
+      throw err;
     }
-    const err = new Error("Код придёт в Telegram на этот номер. Откройте бота, нажмите «Поделиться номером» и запросите код ещё раз.");
-    err.needLink = true;
-    err.botUrl = botUrl(cfg);
-    throw err;
+    await sendTelegram(token, chatId, mailText);
+    return { via: "telegram", masked: maskPhone(phone) };
   }
 
   let smsErr = "";

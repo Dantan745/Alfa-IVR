@@ -1,43 +1,24 @@
-# Alfa Кошелёк ЦР
+# Альфа Кошелёк ЦР
 
-Кошелёк цифрового рубля: веб, сервер и Android.
+Это кошелёк цифрового рубля. В нём есть баланс, переводы другому клиенту, оплата по QR, пополнение и лимиты на траты. Крупный платёж и вход подтверждаются коротким кодом: его можно получить обычным SMS, в Telegram или письмом на почту.
 
-## Запуск
+На главной видны расходы и доходы за текущий месяц и прогноз трат на следующий. Прогноз считается по тому, в какие дни недели деньги обычно уходят, а не «сколько потратили сегодня, умножить на остаток месяца».
 
-Нужен Node.js 20+. В корне репозитория:
+Открыть в браузере: https://alfapaycr.app
 
-```bat
-start.bat
-```
+Демо-вход: `ivan@alfa.demo` / `Demo1234`. Для демо код — любые 4 цифры. PIN в приложении: `1234`.
 
-Поднимаются API (`:8787`) и веб (`:8443`).
+## Скачать
 
-- Этот компьютер: http://localhost:8443/
-- Телефоны в той же Wi‑Fi: `http://IP-ЭТОГО-ПК:8443/`
-- API: http://localhost:8787/api/health
+Один адрес для QR-кода — эта страница. С неё ставятся обе версии.
 
-Демо: `ivan@alfa.demo` / `Demo1234`. Код из SMS — любые 4 цифры.
+- [Windows](https://github.com/Dantan745/Alfa-IVR/releases/download/install/AlfaKoshelekCR-Setup.exe) — установщик, ставится как обычная программа.
+- [Android](https://github.com/Dantan745/Alfa-IVR/releases/download/install/AlfaKoshelekCR.apk) — файл приложения. На телефоне нужно разрешить установку из файла.
 
-База — PostgreSQL. Код на телефон приходит в Telegram [@AlfaKoshelekCRBot](https://t.me/AlfaKoshelekCRBot).
+Телефон и компьютер должны быть в одной Wi-Fi, если открываете кошелёк с компьютера, на котором он запущен: в адресе вместо localhost будет IP этого компьютера, порт 8443.
 
-## Только веб без сервера
+## Если запускаете у себя
 
-```bat
-cd web
-npm install
-set PORT=8443
-npm run dev
-```
+Нужны Node.js 20 и PostgreSQL. В папке проекта запустите `start.bat`: сайт откроется на порту 8443, сервер — на 8787.
 
-## Установка
-
-Windows: `shell\release\AlfaKoshelekCR-Setup.exe`  
-Android: `shell\android\app\build\outputs\apk\debug\app-debug.apk`
-
-Сборка: `cd shell` → `npm install` → `npm run build:win` или `npm run build:android`.
-
-## Android
-
-Открыть папку `android` в Android Studio.
-
-Демо: `ivan@alfa.demo` / `Demo1234`, PIN `1234`.
+Код в Telegram приходит от [@AlfaKoshelekCRBot](https://t.me/AlfaKoshelekCRBot). Перед первым кодом в боте нажимают «Поделиться номером». SMS уходит на номер из профиля, письмо — на почту.

@@ -21,7 +21,7 @@ import ru.raidzyu.alfacr.data.security.PasswordHasher
 import ru.raidzyu.alfacr.domain.TransferResult
 import ru.raidzyu.alfacr.ml.AnomalyDetector
 import ru.raidzyu.alfacr.ml.HeuristicAnomalyDetector
-import ru.raidzyu.alfacr.ml.LinearForecaster
+import ru.raidzyu.alfacr.ml.MonthForecaster
 import ru.raidzyu.alfacr.ml.PaymentForecaster
 import ru.raidzyu.alfacr.ml.TxFeatures
 import java.util.Calendar
@@ -32,7 +32,7 @@ class WalletRepository(
     private val store: ru.raidzyu.alfacr.data.security.SecureStore? = null,
     // Детектор подменяется реализацией AnomalyDetector.
     private val detector: AnomalyDetector = HeuristicAnomalyDetector(),
-    private val forecaster: PaymentForecaster = LinearForecaster(),
+    private val forecaster: PaymentForecaster = MonthForecaster(),
     private val remote: RemoteBankApi = OfflineRemoteApi(),
 ) {
     private var lastLoginAttempts: Int = 1
@@ -287,9 +287,9 @@ class WalletRepository(
     }
 
     suspend fun forecast(userId: Long): Long {
-        val spent = db.transactions().spentSince(userId, startOfMonth(System.currentTimeMillis()))
-        val day = Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
-        return forecaster.monthForecastKopecks(spent, day)
+        val from = System.currentTimeMillis() - 84L * 86_400_000L
+        val points = db.transactions().expensePoints(userId, from).map { it.createdAt to kotlin.math.abs(it.amountKopecks) }
+        return forecaster.monthForecastKopecks(points)
     }
 
     suspend fun monthSpent(userId: Long) =

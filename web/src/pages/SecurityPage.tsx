@@ -50,12 +50,27 @@ export default function SecurityPage({ onBack }: { onBack: () => void }) {
           on={!!wallet?.hideBalance}
           onChange={(v) => void updateSecurity({ hideBalance: v })}
         />
-        <Toggle
-          title="Код на почту, а не в Telegram"
-          hint="Коды входа, регистрации и крупных платежей пойдут на вашу почту"
-          on={user?.otpChannel === "email"}
-          onChange={(v) => void updateSecurity({ otpChannel: v ? "email" : "sms" })}
-        />
+        <div className="rounded-[20px] px-4 py-4 mb-3" style={{ background: "var(--card)" }}>
+          <p className="text-[var(--ink)] text-[15px] font-medium">Куда присылать код</p>
+          <p className="text-[var(--muted-50)] text-[12px] mt-1 mb-3">Обычное SMS, Telegram или почта. На экране кода это можно выбрать заново.</p>
+          <div className="flex gap-2">
+            {([
+              ["sms", "SMS"],
+              ["telegram", "Telegram"],
+              ["email", "Почта"],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => void updateSecurity({ otpChannel: id })}
+                className={`flex-1 h-10 rounded-[12px] text-[13px] pressable ${ (user?.otpChannel || "sms") === id ? "text-[#0B1A1A]" : "text-[var(--ink)]"}`}
+                style={{ background: (user?.otpChannel || "sms") === id ? "linear-gradient(128deg, var(--fill), var(--fill-2))" : "var(--field)" }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="rounded-[20px] px-4 py-4 mb-3" style={{ background: "var(--card)" }}>
           <p className="text-[var(--ink)] text-[15px] font-medium mb-1">PIN-код</p>
           <p className="text-[var(--muted-50)] text-[12px] mb-3">{wallet?.pinSet ? "PIN уже задан. Новый код заменит его, старый на экран не выводится." : "4 цифры для разблокировки приложения. На сервере хранится только хеш."}</p>
@@ -81,7 +96,7 @@ export default function SecurityPage({ onBack }: { onBack: () => void }) {
         <div className="rounded-[20px] px-4 py-4 mb-3" style={{ background: "var(--card)" }}>
           <p className="text-[var(--ink)] text-[15px] font-medium">Двухфакторная защита</p>
           <p className="text-[var(--muted-50)] text-[12px] mt-1">
-            Код обязателен при входе, регистрации и платежах свыше 10 000 ₽. На телефон он приходит в Telegram. Если Telegram нет, на экране кода выберите почту. Массовый платёж всегда подтверждается кодом с почты, кроме демо-счёта.
+            Код обязателен при входе, регистрации и платежах свыше 10 000 ₽. Его можно получить SMS, в Telegram или на почту. Массовый платёж всегда подтверждается кодом с почты, кроме демо-счёта.
           </p>
         </div>
         <div className="rounded-[20px] px-4 py-4" style={{ background: "var(--card)" }}>
