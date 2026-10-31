@@ -1,0 +1,10 @@
+{
+  "description": "Secure mobile banking app offering instant transfers, detailed transaction history, offline access, and smart payment automation for Russian users.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
