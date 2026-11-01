@@ -21,7 +21,7 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { extractFraudRows, FRAUD_FEATURES } from "./features.mjs";
+import { assessRisk, extractFraudRows, FRAUD_FEATURES } from "./features.mjs";
 
 const DAY = 86400000;
 const ML_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ function pythonBin() {
   if (cachedPy !== undefined) return cachedPy;
   cachedPy = null;
   for (const cmd of [process.env.PYTHON, "python", "py", "python3"].filter(Boolean)) {
-    const probe = spawnSync(cmd, ["-c", "import joblib, numpy, sklearn"], { encoding: "utf8", timeout: 15000 });
+    const probe = spawnSync(cmd, ["-c", "import joblib, numpy, sklearn"], { encoding: "utf8", timeout: 4000 });
     if (probe.status === 0) {
       cachedPy = cmd;
       break;
@@ -40,17 +40,28 @@ function pythonBin() {
   return cachedPy;
 }
 
+let pyBusy = false;
 export function scoreWithFriendModel(samples) {
   const list = Array.isArray(samples) ? samples : [samples];
   if (!list.length) return [];
+  if (pyBusy) return list.map(() => null);
   const bin = pythonBin();
   if (!bin) return list.map(() => null);
-  const run = spawnSync(bin, [path.join(ML_DIR, "score.py")], {
-    input: JSON.stringify(list),
-    encoding: "utf8",
-    timeout: 45000,
-    windowsHide: true,
-  });
+  pyBusy = true;
+  let run;
+  try {
+    run = spawnSync(bin, [path.join(ML_DIR, "score.py")], {
+      input: JSON.stringify(list),
+      encoding: "utf8",
+      timeout: 8000,
+      windowsHide: true,
+    });
+  } catch (e) {
+    pyBusy = false;
+    console.warn("[ml] python score threw:", e.message);
+    return list.map(() => null);
+  }
+  pyBusy = false;
   if (run.status !== 0) {
     console.warn("[ml] python score failed:", (run.stderr || run.stdout || "").slice(0, 400));
     return list.map(() => null);
@@ -84,7 +95,8 @@ function stdev(arr) {
 
 function linearForecast(values, horizon) {
   const n = values.length;
-  if (n < 2) return Array.from({ length: horizon }, () => values[n - 1] || 0);
+  const last = values[n - 1] || 0;
+  if (n < 2) return Array.from({ length: horizon }, () => last);
   const xs = values.map((_, i) => i);
   const xMean = mean(xs);
   const yMean = mean(values);
@@ -98,7 +110,8 @@ function linearForecast(values, horizon) {
   const intercept = yMean - slope * xMean;
   const out = [];
   for (let h = 1; h <= horizon; h++) {
-    out.push(Math.max(0, intercept + slope * (n - 1 + h)));
+    const lin = intercept + slope * (n - 1 + h);
+    out.push(Math.max(0, last * 0.55 + Math.max(0, lin) * 0.45));
   }
   return out;
 }
@@ -176,28 +189,13 @@ export function extractFeatures(store) {
   };
 }
 
-function flagsFor(row) {
-  const flags = [];
-  if (row.is_night) flags.push("ночь 23:00–06:00");
-  if (row.is_new_payee) flags.push("новый получатель");
-  if (row.new_device || row.is_new_device) flags.push("новое устройство");
-  if (row.amount_to_avg_ratio >= 3) flags.push("сумма выше среднего чека");
-  if (row.login_attempts >= 4) flags.push("много попыток входа");
-  if (row.amount >= 100000) flags.push("очень крупная сумма");
-  if (row.amount >= 1e12) flags.push("нереалистичная сумма");
-  if (row.type === "income" && row.amount >= 100000) flags.push("крупное пополнение");
-  return flags;
+export function flagsFor(row) {
+  return assessRisk(row, false, 0).flags;
 }
 
-function isStrange(row, modelAnomaly, final) {
-  if (modelAnomaly || final >= 0.55) return true;
-  if (row.savedAnomaly) return true;
-  if (row.amount >= 50000) return true;
-  if (row.amount_to_avg_ratio >= 3 && row.amount >= 1000) return true;
-  if (row.is_new_payee && row.amount >= 500) return true;
-  if (row.is_night && row.amount >= 3000) return true;
-  if (row.type === "income" && row.amount >= 100000) return true;
-  return false;
+export function isStrange(row, modelAnomaly, final) {
+  const v = assessRisk(row, modelAnomaly, final);
+  return v.level !== "ok";
 }
 
 export function mergeAnomalies(...lists) {
@@ -216,6 +214,9 @@ export function mergeAnomalies(...lists) {
         score: Math.max(Number(prev.score) || 0, Number(a.score) || 0),
         flags: [...new Set([...(prev.flags || []), ...(a.flags || [])])],
         createdAt: Math.max(prev.createdAt || 0, a.createdAt || 0),
+        level: (Number(a.score) >= Number(prev.score) ? a.level : prev.level) || a.level || prev.level,
+        label: (Number(a.score) >= Number(prev.score) ? a.label : prev.label) || a.label || prev.label,
+        explain: [...new Set([...(prev.explain || []), ...(a.explain || [])])],
       });
     }
   }
@@ -223,34 +224,42 @@ export function mergeAnomalies(...lists) {
 }
 
 export function runCustomModel(features) {
-  const rows = (features.fraud || []).slice(0, 80);
-  const scored = scoreWithFriendModel(rows);
+  const rows = (features.fraud || []).slice(0, 120);
   const anomalies = [];
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const s = scored[i];
-    const final = Number(s?.final_score || s?.score || row.savedScore || 0);
-    const modelAnomaly = Boolean(s?.anomaly || row.savedAnomaly);
-    if (!isStrange(row, modelAnomaly, final)) continue;
-    const flags = flagsFor(row);
-    const signed = row.signedAmount != null ? row.signedAmount : -row.amount;
-    anomalies.push({
+  const scored = [];
+  for (const row of rows) {
+    const v = row.riskScore != null && row.riskLabel
+      ? {
+          score: row.riskScore,
+          level: row.riskLevel || (row.riskScore >= 75 ? "fraud" : row.riskScore >= 35 ? "watch" : "ok"),
+          label: row.riskLabel,
+          flags: [],
+          explain: row.riskExplain || [],
+          model: 0,
+        }
+      : assessRisk(row, false, 0);
+    scored.push({
       id: row.id,
       email: row.email,
-      amount: signed,
+      amount: row.signedAmount != null ? row.signedAmount : -row.amount,
       createdAt: row.createdAt,
       counterparty: row.counterparty,
-      z: Number(final.toFixed(3)),
-      flags: flags.length ? flags : ["модель антифрода"],
-      score: Math.min(100, Math.max(1, Math.round((final || (flags.length ? 0.7 : 0)) * 100))),
-      engine: s?.engine || (row.savedAnomaly ? "saved" : "rules"),
+      z: Number(v.model.toFixed(3)),
+      flags: v.flags,
+      explain: v.explain,
+      score: v.score,
+      level: v.level,
+      label: v.label,
+      engine: "rules",
     });
+    if (v.level === "ok") continue;
+    anomalies.push(scored[scored.length - 1]);
   }
-  if (!anomalies.length && !scored.some(Boolean)) return null;
   return {
-    engine: scored.some(Boolean) ? "anti_fraud.joblib" : "rules",
-    notes: "Модель коллеги + правила по 8 фичам. Новые операции сверху.",
+    engine: "rules",
+    notes: "Каждая операция получает баллы и расшифровку. Модель коллеги не блокирует запросы.",
     anomalies: mergeAnomalies(anomalies).slice(0, 60),
+    scored: scored.slice(0, 80),
     fraudFeatures: FRAUD_FEATURES,
   };
 }
@@ -282,6 +291,8 @@ function baselineAnomalies(features) {
         z: Number(z.toFixed(2)),
         flags,
         score: Math.min(100, Math.round(40 + Math.abs(z) * 15)),
+        level: t.abs >= 100000 ? "fraud" : "watch",
+        label: t.abs >= 100000 ? "Мошенник" : "Терпимо",
       });
     }
   }
@@ -323,22 +334,38 @@ function baselineRisk(features) {
 
 export function buildReport(store, { horizonDays = 7 } = {}) {
   const features = extractFeatures(store);
-  const volume = features.daily.map((d) => d.volumeOut);
+  const volume = features.daily.map((d) => d.volumeOut + d.volumeIn);
+  const volumeOut = features.daily.map((d) => d.volumeOut);
+  const volumeIn = features.daily.map((d) => d.volumeIn);
   const usersNew = features.daily.map((d) => d.usersNew);
   const last = features.daily[features.daily.length - 1];
   const forecastVolume = linearForecast(volume, horizonDays);
+  const forecastOut = linearForecast(volumeOut, horizonDays);
+  const forecastIn = linearForecast(volumeIn, horizonDays);
   const forecastUsers = linearForecast(usersNew, horizonDays);
   const dates = [];
   const now = Date.now();
   for (let i = 1; i <= horizonDays; i++) dates.push(dayKey(now + i * DAY));
+  const history = features.daily.slice(-7).map((d) => ({
+    date: d.date,
+    volumeOut: Math.round(d.volumeOut),
+    volumeIn: Math.round(d.volumeIn),
+    volume: Math.round(d.volumeOut + d.volumeIn),
+    txCount: d.txCount,
+    actual: true,
+  }));
 
   const baseline = {
     engine: "baseline-v1",
     today: last,
+    history,
     forecast: dates.map((date, i) => ({
       date,
-      volumeOut: Math.round(forecastVolume[i]),
+      volumeOut: Math.round(forecastOut[i]),
+      volumeIn: Math.round(forecastIn[i]),
+      volume: Math.round(forecastVolume[i]),
       usersNew: Number(forecastUsers[i].toFixed(2)),
+      actual: false,
     })),
     anomalies: baselineAnomalies(features),
     riskUsers: baselineRisk(features),
@@ -358,6 +385,10 @@ export function buildReport(store, { horizonDays = 7 } = {}) {
     baseline,
     custom,
     forecast: custom?.forecast || baseline.forecast,
+    history: baseline.history,
+    scored: custom?.scored || [],
+    generatedAt: Date.now(),
+    today: last,
     anomalies: mergeAnomalies(custom?.anomalies, baseline.anomalies).slice(0, 60),
     riskUsers: custom?.riskUsers || baseline.riskUsers,
   };

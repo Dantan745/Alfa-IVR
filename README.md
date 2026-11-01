@@ -47,7 +47,8 @@ npm run dev
 
 ## ML / антифрод (для Даниила)
 
-Инструкция: [`server/ml/README.md`](server/ml/README.md).
+Новый метод работы: [`server/ml/METOD-RABOTY.md`](server/ml/METOD-RABOTY.md).  
+Короткая шпаргалка: [`server/ml/README.md`](server/ml/README.md).
 
 Модель лежит в `server/ml/anti_fraud.joblib`, инференс — `server/ml/anti_fraud_infer.py` (эти два файла — зона ML, приложение их только вызывает).
 

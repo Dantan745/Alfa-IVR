@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useWallet } from "../wallet";
 
 interface ProfilePageProps {
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, extra?: string) => void;
 }
 
 const menuItems = [
@@ -83,24 +83,22 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
           </button>
         </div>
 
-        {/* ML Anomaly alert */}
-        <button
-          type="button"
-          onClick={() => onNavigate("notifications")}
-          className="w-full px-4 py-3 rounded-[20px] mb-5 flex items-center gap-3 pressable"
-          style={{ background: "rgba(255,180,171,0.08)", border: "1px solid rgba(255,180,171,0.2)" }}
+        {user?.frozen && (
+        <div
+          className="w-full px-4 py-3 rounded-[20px] mb-5 flex items-center gap-3"
+          style={{ background: "rgba(255,180,171,0.12)", border: "1px solid rgba(255,180,171,0.35)" }}
         >
-          <span className="material-symbols-outlined text-[#FFB4AB] text-[22px]">security</span>
-          <div className="flex-1">
+          <span className="material-symbols-outlined text-[#FFB4AB] text-[22px]">ac_unit</span>
+          <div className="flex-1 min-w-0">
             <p className="text-[#FFB4AB] text-[13px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
-              Аномалия ML: подозрительный вход
+              Счёт временно ограничен
             </p>
             <p className="text-[rgba(185,202,203,0.6)] text-[12px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
-              Незнакомое устройство · Сегодня 02:14
+              Операции недоступны. При необходимости напишите в поддержку.
             </p>
           </div>
-          <span className="material-symbols-outlined text-[rgba(185,202,203,0.4)] text-[18px]">chevron_right</span>
-        </button>
+        </div>
+        )}
 
         {/* Menu */}
         <div className="rounded-[24px] overflow-hidden mb-5" style={{ background: "#191C1C" }}>

@@ -1,4 +1,4 @@
-import { formatFullDate, formatRub, formatTxDate, useWallet } from "../wallet";
+import { formatFullDate, formatRub, formatTxDate, txStatusLabel, useWallet } from "../wallet";
 
 export default function TxDetailPage({ txId, onBack, onRepeat }: { txId: string; onBack: () => void; onRepeat: () => void }) {
   const { txs } = useWallet();
@@ -16,7 +16,7 @@ export default function TxDetailPage({ txId, onBack, onRepeat }: { txId: string;
   }
 
   const rows = [
-    ["Статус", tx.status === "done" ? "Исполнена" : "В обработке"],
+    ["Статус", txStatusLabel(tx.status)],
     ["Дата", formatFullDate(tx.createdAt)],
     ["Категория", tx.category],
     ["Контрагент", tx.counterparty || tx.name],
@@ -46,6 +46,9 @@ export default function TxDetailPage({ txId, onBack, onRepeat }: { txId: string;
         >
           {tx.type === "income" ? "+" : "−"}{formatRub(Math.abs(tx.amount))} ₽
         </p>
+        {tx.status === "pending" ? (
+          <p className="text-[rgba(185,202,203,0.7)] text-[12px] mt-2 text-center px-4">Операция в обработке</p>
+        ) : null}
       </div>
       <div className="mx-4 rounded-[24px] overflow-hidden mb-4" style={{ background: "#191C1C" }}>
         {rows.map(([k, v], i) => (
@@ -55,7 +58,7 @@ export default function TxDetailPage({ txId, onBack, onRepeat }: { txId: string;
           </div>
         ))}
       </div>
-      {tx.type === "expense" && tx.category === "Переводы" && (
+      {tx.type === "expense" && tx.category === "Переводы" && tx.status === "done" && (
         <div className="px-4 mb-8">
           <button
             onClick={onRepeat}

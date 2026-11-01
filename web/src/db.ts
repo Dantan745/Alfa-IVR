@@ -14,6 +14,9 @@ export type DbUser = {
   otpChannel?: "sms" | "email";
   frozen?: boolean;
   freezeReason?: string;
+  frozenAt?: number;
+  frozenBy?: string;
+  frozenTxId?: string;
 };
 
 export type DbTx = {
@@ -26,9 +29,16 @@ export type DbTx = {
   category: string;
   createdAt: number;
   comment: string;
-  status: "done" | "pending";
+  status: "done" | "pending" | "held" | "rejected";
   counterparty: string;
   balanceAfter: number;
+  mlAnomaly?: number;
+  mlScore?: number;
+  riskLevel?: "ok" | "watch" | "fraud";
+  riskLabel?: string;
+  freezeReason?: string;
+  holdQuery?: string;
+  linkedTxId?: string;
 };
 
 export type DbNote = {
@@ -39,6 +49,7 @@ export type DbNote = {
   kind: "anomaly" | "transfer" | "security" | "system";
   createdAt: number;
   read: boolean;
+  txId?: string;
 };
 
 export type DbContact = {
