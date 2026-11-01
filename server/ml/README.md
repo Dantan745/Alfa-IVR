@@ -68,13 +68,7 @@ echo {"amount":50000,"amount_to_avg_ratio":4.2,"hour":2,"is_night":1,"is_new_pay
 
 Ключ администратора — секрет `ADMIN_KEY` на сервере. В репозитории его нет.
 
-## Android
-
-Контракт экранов: `android/docs/ml-contract.md`.  
-На телефоне пока эвристика с теми же 8 фичами; TFLite можно подставить в `AnomalyDetector`, UI не ломая.
-
 ## Что не делать
 
 - Не коммить `server/data.json`, `server/notify.json`, `.env`.
 - Не переименовывай `score_transfer`, если нет новой обёртки.
-- Не клади TFLite в debug-сборку, пока модель не лёгкая.
