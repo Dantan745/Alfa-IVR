@@ -234,7 +234,7 @@ export default function AdminPage() {
 
   if (!ok) {
     return (
-      <div className="min-h-screen bg-[#0B0E14] flex items-center justify-center p-6">
+      <div className="admin-shell flex items-center justify-center p-6">
         <form onSubmit={(e) => void login(e)} className="w-full max-w-sm rounded-[24px] p-6" style={{ background: "#191C1C" }}>
           <p className="text-[#E0E0E0] text-[20px] mb-1">Кабинет разработчика</p>
           <p className="text-[rgba(185,202,203,0.5)] text-[13px] mb-4">Ключ запускается вместе с сервером (консоль)</p>
@@ -254,8 +254,8 @@ export default function AdminPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#0B0E14] text-[#E0E0E0] p-4 md:p-8">
-      <div className="max-w-[1200px] mx-auto">
+    <div className="admin-shell p-4 md:p-8">
+      <div className="max-w-[1200px] mx-auto pb-16">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <div>
             <p className="text-[22px] font-medium">Админ-панель Alfa ЦР</p>

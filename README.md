@@ -45,6 +45,14 @@ npm run dev
 
 Экраны ролика: авторизация, перевод, главная, лимиты, платежи, смарт-контракт, адресная книга, история, профиль, регистрация.
 
+## ML / антифрод (для Даниила)
+
+Инструкция: [`server/ml/README.md`](server/ml/README.md).
+
+Модель лежит в `server/ml/anti_fraud.joblib`, инференс — `server/ml/anti_fraud_infer.py` (эти два файла — зона ML, приложение их только вызывает).
+
+Админка: [https://alfa-koshelek-cr.fly.dev/admin](https://alfa-koshelek-cr.fly.dev/admin) → вкладка **ML / прогноз**.
+
 ## Android (не эталон картинки)
 
 Открыть в Android Studio папку `D:\AlfaKoshelekCR\android`.  
