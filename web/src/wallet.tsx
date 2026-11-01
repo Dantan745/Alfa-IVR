@@ -107,9 +107,6 @@ type WalletCtx = {
   removeContact: (id: string) => Promise<void>;
   bulkPay: (rows: { name: string; phone: string; amount: number }[], code?: string) => Promise<{ ok: number; fail: number; error?: string }>;
   updateSecurity: (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "email" }) => Promise<void>;
-  createSavings: (name: string) => Promise<string | null>;
-  moveSavings: (id: string, direction: "in" | "out", amount: number) => Promise<string | null>;
-  removeSavings: (id: string) => Promise<string | null>;
   updateLimits: (patch: Record<string, number>) => Promise<string | null>;
   addSupportNote: (text: string) => Promise<void>;
   setToast: (t: string) => void;
@@ -412,36 +409,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [apply, fail]);
 
-  const createSavings = useCallback(async (name: string) => {
-    try {
-      apply(await api.createSavings(name), { quiet: true });
-      setToast("Копилка создана");
-      return null;
-    } catch (e) {
-      return fail(e);
-    }
-  }, [apply, fail]);
-
-  const moveSavings = useCallback(async (id: string, direction: "in" | "out", amount: number) => {
-    try {
-      apply(await api.moveSavings(id, direction, amount), { quiet: true });
-      setToast(direction === "in" ? "Деньги в копилке" : "Деньги вернулись на счёт");
-      return null;
-    } catch (e) {
-      return fail(e);
-    }
-  }, [apply, fail]);
-
-  const removeSavings = useCallback(async (id: string) => {
-    try {
-      apply(await api.removeSavings(id), { quiet: true });
-      setToast("Копилка удалена");
-      return null;
-    } catch (e) {
-      return fail(e);
-    }
-  }, [apply, fail]);
-
   const addSupportNote = useCallback(async (text: string) => {
     try {
       apply(await api.addSupportNote(text), { quiet: true });
@@ -456,9 +423,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, setPendingPayee, flashIds, forecast,
       login, requestCode, forgotPassword, resetPassword, register, logout, transfer, topUp, qrPay,
       copyWalletId, markNotesRead, markNoteRead, addContact, toggleFav, removeContact, bulkPay,
-      updateSecurity, updateLimits, addSupportNote, createSavings, moveSavings, removeSavings, setToast,
+      updateSecurity, updateLimits, addSupportNote, setToast,
     }),
-    [ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, flashIds, forecast, login, requestCode, forgotPassword, resetPassword, register, logout, transfer, topUp, qrPay, copyWalletId, markNotesRead, markNoteRead, addContact, toggleFav, removeContact, bulkPay, updateSecurity, updateLimits, addSupportNote, createSavings, moveSavings, removeSavings],
+    [ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, flashIds, forecast, login, requestCode, forgotPassword, resetPassword, register, logout, transfer, topUp, qrPay, copyWalletId, markNotesRead, markNoteRead, addContact, toggleFav, removeContact, bulkPay, updateSecurity, updateLimits, addSupportNote],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

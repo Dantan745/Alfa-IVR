@@ -72,15 +72,6 @@ CREATE TABLE IF NOT EXISTS wallet (
   alert_abroad  smallint NOT NULL DEFAULT 100
 );
 
--- копилки. сумма тут не участвует в переводе
-CREATE TABLE IF NOT EXISTS savings (
-  id     text PRIMARY KEY,
-  email  text NOT NULL REFERENCES app_user (email) ON DELETE CASCADE ON UPDATE CASCADE,
-  name   text NOT NULL,
-  amount numeric(14,2) NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS savings_email_idx ON savings (email);
-
 -- вход. в token лежит sha256, не сам ключ из браузера
 CREATE TABLE IF NOT EXISTS session (
   token           text PRIMARY KEY,
@@ -281,8 +272,8 @@ function mapUser(row) {
   };
 }
 
-// кошелёк плюс копилки
-function mapWallet(row, savings) {
+// кошелёк
+function mapWallet(row) {
   if (!row) return null;
   return {
     email: row.email,
@@ -290,7 +281,6 @@ function mapWallet(row, savings) {
     biometric: row.biometric,
     pin: row.pin,
     hideBalance: row.hide_balance,
-    savings: savings || [],
     limits: {
       op: Number(row.limit_op),
       day: Number(row.limit_day),
@@ -361,12 +351,6 @@ function mapContact(row) {
     color: row.color,
     favorite: row.favorite,
   };
-}
-
-// копилки этого счёта
-async function savingsOf(email) {
-  const r = await query("SELECT id, name, amount FROM savings WHERE email = $1 ORDER BY id", [email]);
-  return r.rows.map((row) => ({ id: row.id, name: row.name, amount: Number(row.amount) }));
 }
 
 // клиент по почте
@@ -520,14 +504,14 @@ export async function deleteUser(email) {
 export async function getWallet(email) {
   const r = await query("SELECT * FROM wallet WHERE email = $1", [email]);
   if (!r.rows[0]) return null;
-  return mapWallet(r.rows[0], await savingsOf(email));
+  return mapWallet(r.rows[0]);
 }
 
 // блокируем строку кошелька на время списания
 export async function lockWallet(email) {
   const r = await query("SELECT * FROM wallet WHERE email = $1 FOR UPDATE", [email]);
   if (!r.rows[0]) return null;
-  return mapWallet(r.rows[0], await savingsOf(email));
+  return mapWallet(r.rows[0]);
 }
 
 // деньги с копейками, кривые значения в ноль
@@ -561,54 +545,9 @@ export async function insertWallet(wallet) {
       percent(limits.alertOp, 90), percent(limits.alertDay, 80), percent(limits.alertMonth, 70), percent(limits.alertAbroad, 100),
     ],
   );
-  for (const box of wallet.savings || []) {
-    await query("INSERT INTO savings (id, email, name, amount) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING", [box.id, wallet.email, box.name, money(box.amount, 0)]);
-  }
 }
 
-// новая копилка, деньги в неё ещё не кладём
-export async function createSavings(email, name) {
-  const clean = String(name || "").trim().slice(0, 32);
-  if (clean.length < 2) throw new Error("Название от 2 символов");
-  const n = await query("SELECT count(*)::int AS n FROM savings WHERE email = $1", [email]);
-  if (n.rows[0].n >= 6) throw new Error("Не больше шести копилок");
-  const id = "s" + crypto.randomBytes(4).toString("hex");
-  await query("INSERT INTO savings (id, email, name, amount) VALUES ($1, $2, $3, 0)", [id, email, clean]);
-  return id;
-}
-
-// положить на копилку или забрать на баланс. обе суммы в одной транзакции
-export async function shiftSavings(email, id, direction, amount) {
-  const move = money(amount);
-  if (!(move > 0)) throw new Error("Укажите сумму");
-  if (direction !== "in" && direction !== "out") throw new Error("Некорректная операция");
-  return withTx(async () => {
-    const locked = await query("SELECT balance FROM wallet WHERE email = $1 FOR UPDATE", [email]);
-    if (!locked.rows[0]) throw new Error("Кошелёк не найден");
-    const box = await query("SELECT name, amount FROM savings WHERE id = $1 AND email = $2 FOR UPDATE", [id, email]);
-    if (!box.rows[0]) throw new Error("Копилка не найдена");
-    const balance = Number(locked.rows[0].balance);
-    const have = Number(box.rows[0].amount);
-    const into = direction === "in";
-    if (into && balance < move) throw new Error("Недостаточно средств");
-    if (!into && have < move) throw new Error("В копилке меньше");
-    const nextBalance = money(into ? balance - move : balance + move);
-    const nextBox = money(into ? have + move : have - move);
-    await query("UPDATE wallet SET balance = $2 WHERE email = $1", [email, nextBalance]);
-    await query("UPDATE savings SET amount = $2 WHERE id = $1 AND email = $3", [id, nextBox, email]);
-    return { name: box.rows[0].name, amount: move, direction: into ? "in" : "out" };
-  });
-}
-
-// пустую копилку можно убрать. с деньгами внутри — сначала забрать
-export async function removeSavings(email, id) {
-  const r = await query("SELECT amount FROM savings WHERE id = $1 AND email = $2", [id, email]);
-  if (!r.rows[0]) throw new Error("Копилка не найдена");
-  if (Number(r.rows[0].amount) > 0) throw new Error("Сначала заберите деньги из копилки");
-  await query("DELETE FROM savings WHERE id = $1 AND email = $2", [id, email]);
-}
-
-// сохранить баланс, лимиты, копилки
+// сохранить баланс и лимиты
 export async function saveWallet(wallet) {
   const limits = wallet.limits || {};
   await query(
@@ -1147,10 +1086,6 @@ async function seedDemo() {
     biometric: false,
     pin: await hashPassword("1234"),
     hideBalance: false,
-    savings: [
-      { id: "s1", name: "Копилка 1", amount: 200 },
-      { id: "s2", name: "Копилка 2", amount: 100 },
-    ],
     limits: { day: 50000, month: 100000, op: 30000, abroad: 10000, alertDay: 80, alertMonth: 70, alertOp: 90, alertAbroad: 100 },
   });
   const seedTx = [

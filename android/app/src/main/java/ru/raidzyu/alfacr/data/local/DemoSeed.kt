@@ -88,7 +88,7 @@ object DemoSeed {
         db.limits().insert(LimitEntity(0, userId, "Лимит переводов за рубеж", "abroad", 10_000_00, 100, "₽/день"))
 
         db.contracts().insert(SmartContractEntity(0, userId, "Аренда квартиры", "1 число месяца", 25_000_00, "Петров А.С.", true, "1 окт 2026"))
-        db.contracts().insert(SmartContractEntity(0, userId, "Пополнение копилки", "Каждую пятницу", 2_000_00, "Копилка 1", true, "19 сен 2026"))
+        db.contracts().insert(SmartContractEntity(0, userId, "Интернет", "Каждую пятницу", 2_000_00, "Провайдер", true, "19 сен 2026"))
         db.contracts().insert(SmartContractEntity(0, userId, "Страховой взнос", "15 числа", 5_500_00, "Страховая СК", false, "Пауза"))
 
         db.alerts().insert(

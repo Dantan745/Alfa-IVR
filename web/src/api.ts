@@ -102,10 +102,6 @@ export const api = {
   updateSecurity: (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "email" }) =>
     req<Snapshot>("/api/security", { method: "PATCH", body: JSON.stringify(patch) }),
   checkPin: (pin: string) => req<{ ok: boolean }>("/api/pin/check", { method: "POST", body: JSON.stringify({ pin }) }),
-  createSavings: (name: string) => req<Snapshot>("/api/savings", { method: "POST", body: JSON.stringify({ name }) }),
-  moveSavings: (id: string, direction: "in" | "out", amount: number) =>
-    req<Snapshot>("/api/savings/" + encodeURIComponent(id) + "/" + direction, { method: "POST", body: JSON.stringify({ amount }) }),
-  removeSavings: (id: string) => req<Snapshot>("/api/savings/" + encodeURIComponent(id), { method: "DELETE" }),
   updateLimits: (patch: Record<string, number>) =>
     req<Snapshot>("/api/limits", { method: "PATCH", body: JSON.stringify(patch) }),
   addSupportNote: (text: string) =>

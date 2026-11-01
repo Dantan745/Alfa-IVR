@@ -271,92 +271,6 @@ function Group13() {
   );
 }
 
-function Group14() {
-  return (
-    <div className="absolute contents left-[20px] top-[815px]">
-      <div className="absolute h-[111px] left-[20px] rounded-[32px] shadow-[0px_0px_40px_0px_rgba(0,242,255,0.1)] top-[815px] w-[353px]" style={{ backgroundImage: "linear-gradient(108.82711723075636deg, rgb(40, 42, 42) 0%, rgb(25, 28, 28) 100%)" }} />
-      <p className="[word-break:break-word] absolute font-['Roboto:Medium',sans-serif] font-medium h-[21px] leading-[normal] left-[47px] text-[#b9cacb] text-[16px] top-[832px] w-[125px]" style={{ fontVariationSettings: '"wdth" 100' }}>
-        Копилка 1
-      </p>
-      <p className="[word-break:break-word] absolute font-['Roboto:Medium',sans-serif] font-medium h-[36px] leading-[normal] left-[47px] text-[#e0e0e0] text-[32px] top-[861px] w-[100px]" style={{ fontVariationSettings: '"wdth" 100' }}>
-        200,00
-      </p>
-    </div>
-  );
-}
-
-function Component1() {
-  return (
-    <div className="absolute contents left-[20px] top-[815px]" data-name="Копилка">
-      <Group14 />
-      <div className="absolute h-[23px] left-[157px] top-[868px] w-[22px]">
-        <div className="absolute inset-[-6.52%_-25%_-34.78%_-18.18%]">
-          <svg className="block size-full" fill="none" height="32.5" preserveAspectRatio="none" viewBox="0 0 31.5 32.5" width="31.5">
-            <g filter="url(#filter0_d_0_27)" id="Vector 3">
-              <path d={svgPaths.p18526400} shapeRendering="crispEdges" stroke="#00D2D3" strokeOpacity="0.5" strokeWidth="3" />
-            </g>
-            <defs>
-              <filter colorInterpolationFilters="sRGB" filterUnits="userSpaceOnUse" height="32.5" id="filter0_d_0_27" width="31.5" x="0" y="0">
-                <feFlood floodOpacity="0" result="BackgroundImageFix" />
-                <feColorMatrix in="SourceAlpha" result="hardAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" />
-                <feOffset dy="4" />
-                <feGaussianBlur stdDeviation="2" />
-                <feComposite in2="hardAlpha" operator="out" />
-                <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.25 0" />
-                <feBlend in2="BackgroundImageFix" mode="normal" result="effect1_dropShadow_0_27" />
-                <feBlend in="SourceGraphic" in2="effect1_dropShadow_0_27" mode="normal" result="shape" />
-              </filter>
-            </defs>
-          </svg>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Group15() {
-  return (
-    <div className="absolute contents left-[20px] top-[964px]">
-      <div className="absolute h-[111px] left-[20px] rounded-[32px] shadow-[0px_0px_40px_0px_rgba(0,242,255,0.1)] top-[964px] w-[353px]" style={{ backgroundImage: "linear-gradient(108.82711723075636deg, rgb(40, 42, 42) 0%, rgb(25, 28, 28) 100%)" }} />
-      <p className="[word-break:break-word] absolute font-['Roboto:Medium',sans-serif] font-medium h-[21px] leading-[normal] left-[47px] text-[#b9cacb] text-[16px] top-[981px] w-[125px]" style={{ fontVariationSettings: '"wdth" 100' }}>
-        Копилка 2
-      </p>
-      <p className="[word-break:break-word] absolute font-['Roboto:Medium',sans-serif] font-medium h-[36px] leading-[normal] left-[47px] text-[#e0e0e0] text-[32px] top-[1010px] w-[100px]" style={{ fontVariationSettings: '"wdth" 100' }}>
-        100,00
-      </p>
-    </div>
-  );
-}
-
-function Component2() {
-  return (
-    <div className="absolute contents left-[20px] top-[964px]" data-name="Копилка">
-      <Group15 />
-      <div className="absolute h-[23px] left-[157px] top-[1017px] w-[22px]">
-        <div className="absolute inset-[-6.52%_-25%_-34.78%_-18.18%]">
-          <svg className="block size-full" fill="none" height="32.5" preserveAspectRatio="none" viewBox="0 0 31.5 32.5" width="31.5">
-            <g filter="url(#filter0_d_0_27)" id="Vector 3">
-              <path d={svgPaths.p18526400} shapeRendering="crispEdges" stroke="#00D2D3" strokeOpacity="0.5" strokeWidth="3" />
-            </g>
-            <defs>
-              <filter colorInterpolationFilters="sRGB" filterUnits="userSpaceOnUse" height="32.5" id="filter0_d_0_27" width="31.5" x="0" y="0">
-                <feFlood floodOpacity="0" result="BackgroundImageFix" />
-                <feColorMatrix in="SourceAlpha" result="hardAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" />
-                <feOffset dy="4" />
-                <feGaussianBlur stdDeviation="2" />
-                <feComposite in2="hardAlpha" operator="out" />
-                <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.25 0" />
-                <feBlend in2="BackgroundImageFix" mode="normal" result="effect1_dropShadow_0_27" />
-                <feBlend in="SourceGraphic" in2="effect1_dropShadow_0_27" mode="normal" result="shape" />
-              </filter>
-            </defs>
-          </svg>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function Component4() {
   return (
     <div className="absolute contents left-[20px] top-[50px]" data-name="номер телефона/почта">
@@ -395,8 +309,6 @@ function Component() {
       <Group18 />
       <Group12 />
       <Group13 />
-      <Component1 />
-      <Component2 />
       <Component3 />
     </div>
   );

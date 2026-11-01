@@ -1019,7 +1019,6 @@ const server = http.createServer(async (req, res) => {
         await db.insertWallet({
           email,
           balance: 0,
-          savings: [],
           biometric: false,
           pin: await hashPassword("1234"),
           hideBalance: false,
@@ -1639,44 +1638,6 @@ const server = http.createServer(async (req, res) => {
           return send(res, 400, { error: "Неверный PIN" });
         }
         send(res, 200, { ok: true });
-        return;
-      }
-
-      if (req.method === "POST" && p === "/api/savings") {
-        const b = await readBody(req);
-        try {
-          await db.createSavings(email, b.name);
-        } catch (e) {
-          return send(res, 400, { error: e.message });
-        }
-        await addNote(email, "Копилка", `Создана «${String(b.name || "").trim().slice(0, 32)}»`, "system");
-        send(res, 200, await snapshot(email));
-        return;
-      }
-
-      const savingsMove = p.match(/^\/api\/savings\/([^/]+)\/(in|out)$/);
-      if (req.method === "POST" && savingsMove) {
-        const id = decodeURIComponent(savingsMove[1]);
-        const b = await readBody(req);
-        try {
-          const moved = await db.shiftSavings(email, id, savingsMove[2], Number(b.amount));
-          const verb = moved.direction === "in" ? "Положили" : "Забрали";
-          await addNote(email, "Копилка", `${verb} ${moved.amount.toLocaleString("ru-RU")} ₽ · ${moved.name}`, "system");
-        } catch (e) {
-          return send(res, 400, { error: e.message });
-        }
-        send(res, 200, await snapshot(email));
-        return;
-      }
-
-      const savingsDrop = p.match(/^\/api\/savings\/([^/]+)$/);
-      if (req.method === "DELETE" && savingsDrop) {
-        try {
-          await db.removeSavings(email, decodeURIComponent(savingsDrop[1]));
-        } catch (e) {
-          return send(res, 400, { error: e.message });
-        }
-        send(res, 200, await snapshot(email));
         return;
       }
 

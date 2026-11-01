@@ -228,28 +228,6 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (String) -> Unit) {
                 }
             }
         }
-        item {
-            Text("Копилки", color = Cr.Text, fontSize = 17.sp, fontWeight = FontWeight.Medium, fontFamily = RobotoFamily, modifier = Modifier.padding(bottom = 12.dp))
-        }
-        itemsIndexed(listOf("Копилка 1" to "200,00", "Копилка 2" to "100,00")) { _, s ->
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp)
-                    .shadow(16.dp, RoundedCornerShape(28.dp), ambientColor = Color(0x1400F2FF), spotColor = Color(0x1400F2FF))
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(Brush.linearGradient(listOf(Color(0xFF282A2A), Color(0xFF191C1C))))
-                    .padding(horizontal = 24.dp, vertical = 20.dp),
-            ) {
-                Column {
-                    Text(s.first, color = Cr.Text2, fontSize = 15.sp, fontFamily = RobotoFamily, fontWeight = FontWeight.Medium)
-                    Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 4.dp)) {
-                        Text(s.second, color = Cr.Text, fontSize = 30.sp, fontWeight = FontWeight.Medium, fontFamily = RobotoFamily)
-                        Text("  ₽", color = Cr.Accent, fontSize = 16.sp, modifier = Modifier.padding(bottom = 4.dp))
-                    }
-                }
-            }
-        }
         item { Spacer(Modifier.height(16.dp)) }
     }
 }

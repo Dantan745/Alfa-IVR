@@ -20,7 +20,7 @@ interface Contract {
 
 const initialContracts: Contract[] = [
   { id: 1, name: "Аренда квартиры", trigger: "1 число месяца", amount: 25000, recipient: "Петров А.С.", active: true, nextRun: "1 окт 2026" },
-  { id: 2, name: "Пополнение копилки", trigger: "Каждую пятницу", amount: 2000, recipient: "Копилка 1", active: true, nextRun: "19 сен 2026" },
+  { id: 2, name: "Интернет", trigger: "Каждую пятницу", amount: 2000, recipient: "Провайдер", active: true, nextRun: "19 сен 2026" },
   { id: 3, name: "Страховой взнос", trigger: "15 числа", amount: 5500, recipient: "Страховая СК", active: false, nextRun: "Пауза" },
 ];
 

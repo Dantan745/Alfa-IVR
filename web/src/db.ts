@@ -77,7 +77,6 @@ export type WalletLimits = {
 export type DbWallet = {
   email: string;
   balance: number;
-  savings: { id: string; name: string; amount: number }[];
   biometric: boolean;
   pin?: string;
   pinSet?: boolean;
