@@ -1,10 +1,11 @@
-import calendar
 import json
 import os
 import re
+import ssl
 import time
 import urllib.error
 import urllib.request
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -15,23 +16,12 @@ import pandas as pd
 DIR = Path(__file__).resolve().parent
 BUNDLE_PATH = DIR / 'recommended_clusters.joblib'
 MSK = timezone(timedelta(hours=3))
-MODEL_NAME = 'gemini-3.5-flash-lite'
-GEMINI_MODELS = [
-    'gemini-3.5-flash-lite',
-    'gemini-3.1-flash-lite',
-    'gemini-flash-lite-latest',
-    'gemini-3.5-flash',
-    'gemini-3.1-flash-lite-preview',
-    'gemini-flash-latest',
-    'gemini-3.6-flash',
-    'gemini-3.7-flash',
-]
 
 RULES = [
     ('поездки', r'авиакомпани|авиалини|турист|круиз|отел|мотел|курорт|аренде автомобил|прокат автомобил|базы отдыха|аттракцион'),
-    ('транспорт', r'такси|автобус|железн|бензозаправ|техобслуживан|транспортировк|паркинг'),
-    ('еда', r'продовольствен|супермаркет|бакалей|ресторан|закусоч|кондитер|булочн|молочн|общественного питания|бары|провизи|спиртн'),
-    ('покупки', r'магазин|универмаг|одежд|обув|товары для дома|бытов|электронн|спорттовар|игруш|косметик|ювелир|зоомагаз|канцтовар|книжн|мебел|звукозапис'),
+    ('транспорт', r'такси|автобус|железн|бензозаправ|техобслуживан|транспортировк|транспорт|паркинг'),
+    ('еда', r'продовольствен|супермаркет|бакалей|ресторан|закусоч|кондитер|булочн|молочн|общественного питания|бары|провизи|спиртн|кафе|продукт'),
+    ('покупки', r'магазин|универмаг|одежд|обув|товары для дома|бытов|электронн|электроник|спорттовар|игруш|косметик|ювелир|зоомагаз|канцтовар|книжн|мебел|звукозапис'),
 ]
 CLUSTER_COLUMNS = ['avg_check', 'counts', 'еда', 'транспорт', 'покупки', 'поездки']
 
@@ -191,175 +181,112 @@ def build_prompt(regular, cluster_row, descriptions):
     return prompt
 
 
-def _ask_once(key, model, contents):
-    url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key
-    body = json.dumps({
-        'contents': contents,
-        'tools': [{'code_execution': {}}],
-    }).encode()
-    req = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json'})
-    try:
-        with urllib.request.urlopen(req, timeout=18) as resp:
-            result = json.load(resp)
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode('utf-8', errors='replace')[:500]
-        return None, f'Gemini {error.code}: {detail}'
-    except urllib.error.URLError as error:
-        return None, f'Gemini: {error.reason}'
-    texts = []
-    for part in result['candidates'][0]['content']['parts']:
-        if 'text' in part:
-            texts.append(part['text'])
-    if not texts:
-        return None, 'Gemini не вернул текст'
-    return '\n'.join(texts).strip(), None
-
-
-def _contents_text(contents):
-    lines = []
-    for item in contents or []:
-        role = item.get('role') or 'user'
-        for part in item.get('parts') or []:
-            text = part.get('text')
-            if text:
-                lines.append(role + ': ' + text)
-    return '\n'.join(lines)
-
-
-def _lmstudio_base():
-    return (os.environ.get('LMSTUDIO_BASE_URL') or 'http://127.0.0.1:1234').rstrip('/')
-
-
-def _lmstudio_model(base):
-    chosen = (os.environ.get('LMSTUDIO_MODEL') or '').strip()
-    if chosen:
-        return chosen
-    req = urllib.request.Request(base + '/v1/models')
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        data = json.load(resp)
-    skip = ('embed', 'diffusion', 'pony', 'whisper', 'flux', 'stable-diffusion')
-    for item in data.get('data') or []:
-        name = str(item.get('id') or '')
-        low = name.lower()
-        if name and not any(part in low for part in skip):
-            return name
-    return ''
-
-
-def _lmstudio_messages(contents):
+def _gigachat_messages(contents):
     messages = []
     for item in contents or []:
         role = 'assistant' if item.get('role') == 'model' else 'user'
-        parts = [part.get('text') for part in (item.get('parts') or []) if part.get('text')]
-        if parts:
-            messages.append({'role': role, 'content': '\n'.join(parts)[:24000]})
+        lines = []
+        for part in item.get('parts') or []:
+            text = part.get('text')
+            if text:
+                lines.append(text)
+        line = '\n'.join(lines).strip()
+        if line:
+            messages.append({'role': role, 'content': line[:8000]})
     return messages
 
 
-def ask_lmstudio(contents):
-    base = _lmstudio_base()
+_gigachat_token_cache = {'token': '', 'until': 0.0}
+
+
+def _urlopen(req, timeout):
     try:
-        model = _lmstudio_model(base)
-    except urllib.error.URLError:
-        return None, 'LM Studio недоступен'
-    except Exception as error:
-        return None, f'LM Studio: {error}'
-    if not model:
-        return None, 'LM Studio: нет текстовой модели'
-    messages = _lmstudio_messages(contents)
+        return urllib.request.urlopen(req, timeout=timeout)
+    except urllib.error.URLError as error:
+        if 'CERTIFICATE_VERIFY_FAILED' not in str(error.reason):
+            raise
+        return urllib.request.urlopen(req, timeout=timeout, context=ssl._create_unverified_context())
+
+
+def _gigachat_token(auth):
+    now = time.time()
+    if _gigachat_token_cache['token'] and now < _gigachat_token_cache['until']:
+        return _gigachat_token_cache['token'], None
+    url = 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth'
+    body = b'scope=GIGACHAT_API_PERS'
+    req = urllib.request.Request(url, data=body, headers={
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
+        'RqUID': str(uuid.uuid4()),
+        'Authorization': 'Basic ' + auth,
+    })
+    try:
+        with _urlopen(req, 20) as resp:
+            result = json.load(resp)
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode('utf-8', errors='replace')[:500]
+        return None, f'GigaChat auth {error.code}: {detail}'
+    except urllib.error.URLError as error:
+        return None, f'GigaChat auth: {error.reason}'
+    token = result.get('access_token') or ''
+    if not token:
+        return None, 'GigaChat не выдал токен'
+    _gigachat_token_cache['token'] = token
+    _gigachat_token_cache['until'] = now + 25 * 60
+    return token, None
+
+
+def ask_gigachat(prompt=None, contents=None):
+    auth = (os.environ.get('GIGACHAT_AUTH_KEY') or '').strip()
+    if auth.lower().startswith('basic '):
+        auth = auth[6:].strip()
+    if not auth:
+        return None, 'Нет GIGACHAT_AUTH_KEY'
+    token, error = _gigachat_token(auth)
+    if error:
+        return None, error
+    if contents is None:
+        messages = [{'role': 'user', 'content': str(prompt or '')[:24000]}]
+    else:
+        messages = _gigachat_messages(contents)
     if not messages:
         return None, 'Нет сообщения'
     body = json.dumps({
-        'model': model,
+        'model': 'GigaChat',
         'messages': messages,
         'temperature': 0.3,
-        'max_tokens': 900,
-        'stream': False,
+        'max_tokens': 1200,
     }).encode()
-    req = urllib.request.Request(
-        base + '/v1/chat/completions',
-        data=body,
-        headers={'Content-Type': 'application/json'},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=170) as resp:
-            result = json.load(resp)
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode('utf-8', errors='replace')[:500]
-        return None, f'LM Studio {error.code}: {detail}'
-    except urllib.error.URLError as error:
-        return None, f'LM Studio недоступен: {error.reason}'
-    choices = result.get('choices') or []
-    if not choices:
-        return None, 'LM Studio не вернул текст'
-    message = choices[0].get('message') or {}
-    text = message.get('content') or ''
-    if not str(text).strip():
-        return None, 'LM Studio не вернул текст'
-    return str(text).strip(), None
-
-
-def ask_yandex(contents):
-    key = os.environ.get('YANDEX_API_KEY') or ''
-    folder = os.environ.get('YANDEX_FOLDER_ID') or ''
-    if not key:
-        return None, 'Нет YANDEX_API_KEY'
-    if not folder:
-        return None, 'Нет YANDEX_FOLDER_ID'
-    url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion'
-    body = json.dumps({
-        'modelUri': 'gpt://' + folder + '/yandexgpt-lite/latest',
-        'completionOptions': {'stream': False, 'temperature': 0.3, 'maxTokens': 1200},
-        'messages': [{'role': 'user', 'text': _contents_text(contents)[:24000]}],
-    }).encode()
-    req = urllib.request.Request(url, data=body, headers={
-        'Content-Type': 'application/json',
-        'Authorization': 'Api-Key ' + key,
-    })
-    try:
-        with urllib.request.urlopen(req, timeout=25) as resp:
-            result = json.load(resp)
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode('utf-8', errors='replace')[:500]
-        return None, f'Yandex {error.code}: {detail}'
-    except urllib.error.URLError as error:
-        return None, f'Yandex: {error.reason}'
-    alternatives = result.get('result', {}).get('alternatives') or []
-    if not alternatives:
-        return None, 'Yandex не вернул текст'
-    text = alternatives[0].get('message', {}).get('text') or ''
-    if not text.strip():
-        return None, 'Yandex не вернул текст'
-    return text.strip(), None
-
-
-def ask_gemini(prompt=None, api_key=None, model=MODEL_NAME, contents=None):
-    key = api_key or os.environ.get('GEMINI_API_KEY') or ''
-    if contents is None:
-        contents = [{'role': 'user', 'parts': [{'text': prompt}]}]
-    models = list(GEMINI_MODELS)
-    if model and model not in models:
-        models.insert(0, model)
-    local_reply, local_error = ask_lmstudio(contents)
-    if local_error is None:
-        return local_reply, None
-    local_down = str(local_error).startswith('LM Studio недоступен')
     last_error = None
-    if key:
-        for name in models:
-            reply, error = _ask_once(key, name, contents)
-            if error is None:
-                return reply, None
-            last_error = error
-    else:
-        last_error = 'Нет GEMINI_API_KEY'
-    reply, error = ask_yandex(contents)
-    if error is None:
-        return reply, None
-    parts = [item for item in (None if local_down else local_error, last_error, error) if item]
-    if local_down:
-        parts.append(local_error)
-    return None, ' | '.join(parts) if parts else local_error
+    for url in (
+        'https://api.giga.chat/v1/chat/completions',
+        'https://gigachat.devices.sberbank.ru/api/v1/chat/completions',
+    ):
+        req = urllib.request.Request(url, data=body, headers={
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': 'Bearer ' + token,
+        })
+        try:
+            with _urlopen(req, 40) as resp:
+                result = json.load(resp)
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode('utf-8', errors='replace')[:500]
+            last_error = f'GigaChat {error.code}: {detail}'
+            continue
+        except urllib.error.URLError as error:
+            last_error = f'GigaChat: {error.reason}'
+            continue
+        choices = result.get('choices') or []
+        if not choices:
+            last_error = 'GigaChat не вернул текст'
+            continue
+        answer = choices[0].get('message', {}).get('content') or ''
+        if not answer.strip():
+            last_error = 'GigaChat не вернул текст'
+            continue
+        return answer.strip(), None
+    return None, last_error
 
 
 def _plain(value):
@@ -398,30 +325,8 @@ def discuss_client(rows, recommendation, messages, bundle=None):
             contents.append({'role': role, 'parts': [{'text': line[:4000]}]})
     if not contents or contents[-1]['role'] != 'user':
         return {'reply': None, 'recommendation_error': 'Нет сообщения'}
-    reply, error = ask_gemini(contents=contents)
+    reply, error = ask_gigachat(contents=contents)
     return {'reply': reply, 'recommendation_error': error}
-
-
-def formula_text(rows):
-    now = time.time()
-    total = 0.0
-    for row in rows or []:
-        try:
-            amount = float(row.get('amount') or 0)
-            created = float(row.get('createdAt') or row.get('created_at') or 0)
-        except (TypeError, ValueError):
-            continue
-        if created > 10_000_000_000:
-            created /= 1000
-        if amount < 0 and created >= now - 30 * 86400:
-            total += -amount
-    shifted = time.gmtime(now + 3 * 3600)
-    next_month = shifted.tm_mon % 12
-    year = shifted.tm_year + (1 if shifted.tm_mon == 12 else 0)
-    days_next = calendar.monthrange(year, next_month + 1)[1]
-    amount = int(round(total / 30 * days_next))
-    name = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'][next_month]
-    return f'На {name} около {amount} ₽. Это средние траты за последние 30 дней.'
 
 
 def infer_client(rows, bundle=None, with_text=True):
@@ -446,10 +351,7 @@ def infer_client(rows, bundle=None, with_text=True):
     error = None
     if with_text:
         prompt = build_prompt(regular, cluster_row, descriptions)
-        recommendation, error = ask_gemini(prompt)
-        if error or not recommendation:
-            recommendation = formula_text(rows)
-            error = None
+        recommendation, error = ask_gigachat(prompt)
     return {
         'regularity': regular.to_dict(orient='records'),
         'cluster_features': {column: _plain(cluster_row[column]) for column in CLUSTER_COLUMNS},
