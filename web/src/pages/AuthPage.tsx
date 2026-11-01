@@ -116,7 +116,6 @@ export default function AuthPage() {
   const [showRegCode, setShowRegCode] = useState(false);
   const [channel, setChannel] = useState<OtpChannel>("sms");
   const [codeHint, setCodeHint] = useState("");
-  const [botUrl, setBotUrl] = useState("");
   const [lastName, setLastName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [middleName, setMiddleName] = useState("");
@@ -214,13 +213,11 @@ export default function AuthPage() {
       return;
     }
     if (r.needLink) {
-      setBotUrl(r.botUrl || "");
-      setCodeHint("Код бесплатно придёт в Telegram на этот номер. Откройте бота, нажмите «Поделиться номером» и запросите код ещё раз.");
+      setCodeHint("Код придёт SMS или на почту. Выберите канал и запросите его ещё раз.");
       setShowCode(true);
       setFormError("");
       return;
     }
-    setBotUrl("");
     if (r.via === "skip") {
       const err = await login(email, password);
       setFormError(err || "");
@@ -231,9 +228,7 @@ export default function AuthPage() {
     const hint =
       r.via === "demo"
         ? "Демо: любые 4 цифры"
-        : r.via === "telegram"
-          ? `Код в Telegram на ${r.masked}.`
-          : r.fallback
+        : r.fallback
             ? `На телефон не дошло — код отправлен на почту ${r.masked}.`
             : `Код отправлен на ${r.masked}.`;
     setCodeHint(hint);
@@ -269,22 +264,18 @@ export default function AuthPage() {
       return;
     }
     if (r.needLink) {
-      setBotUrl(r.botUrl || "");
       setResetMode(true);
       setShowCode(true);
-      setCodeHint("Код бесплатно придёт в Telegram на этот номер. Откройте бота, нажмите «Поделиться номером» и запросите код ещё раз.");
+      setCodeHint("Код придёт SMS или на почту. Выберите канал и запросите его ещё раз.");
       setFormError("");
       return;
     }
-    setBotUrl("");
     setResetMode(true);
     setShowCode(true);
     const hint =
       r.via === "demo"
         ? "Демо: любые 4 цифры, затем задайте новый пароль"
-        : r.via === "telegram"
-          ? `Код в Telegram на ${r.masked}.`
-          : r.fallback
+        : r.fallback
             ? `На телефон не дошло — код восстановления на почте ${r.masked}.`
             : `Код восстановления отправлен на ${r.masked}.`;
     setCodeHint(hint);
@@ -321,13 +312,11 @@ export default function AuthPage() {
         return;
       }
       if (r.needLink) {
-        setBotUrl(r.botUrl || "");
         setShowRegCode(true);
-        setCodeHint("Код бесплатно придёт в Telegram на этот номер. Откройте бота, нажмите «Поделиться номером» и запросите код ещё раз.");
+        setCodeHint("Код придёт SMS или на почту. Выберите канал и запросите его ещё раз.");
         setFormError("");
         return;
       }
-      setBotUrl("");
       if (r.via === "skip") {
         const err = await register({
           lastName, firstName, middleName, passport, phone: regPhone, email: regEmail, password: regPassword, code: "000000", channel,
@@ -337,7 +326,7 @@ export default function AuthPage() {
         return;
       }
       setShowRegCode(true);
-      setCodeHint(r.via === "telegram" ? `Код в Telegram на ${r.masked}.` : r.fallback ? `На телефон не дошло — код на почте ${r.masked}.` : `Код отправлен на ${r.masked}.`);
+      setCodeHint(r.fallback ? `На телефон не дошло — код на почте ${r.masked}.` : `Код отправлен на ${r.masked}.`);
       setFormError("");
       return;
     }
@@ -380,7 +369,6 @@ export default function AuthPage() {
                 onCode={setCode}
                 hint={codeHint}
                 error={errors.code}
-                botUrl={botUrl}
               />
             )}
             {formError && <p className="text-[var(--danger)] text-[13px] mb-3">{formError}</p>}
@@ -493,7 +481,6 @@ export default function AuthPage() {
                 onCode={setCode}
                 hint={codeHint}
                 error={errors.code}
-                botUrl={botUrl}
               />
             )}
             {formError && <p className="text-[var(--danger)] text-[13px] mb-2">{formError}</p>}
@@ -505,11 +492,9 @@ export default function AuthPage() {
                   const r = await requestCode({ purpose: "register", channel, email: regEmail, phone: regPhone });
                   setFormError(r.error || "");
                   if (r.needLink) {
-                    setBotUrl(r.botUrl || "");
-                    setCodeHint("Откройте Telegram, поделитесь номером и запросите код ещё раз.");
+                    setCodeHint("Выберите SMS или почту и запросите код ещё раз.");
                   } else if (!r.error) {
-                    setBotUrl("");
-                    setCodeHint(r.via === "telegram" ? `Код в Telegram на ${r.masked}.` : `Код отправлен на ${r.masked}.`);
+                    setCodeHint(`Код отправлен на ${r.masked}.`);
                   }
                 }}
               >

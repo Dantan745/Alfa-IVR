@@ -421,14 +421,12 @@ export default function AdminPage() {
             </div>
 
             <div className="rounded-[20px] p-4 mb-4" style={{ background: "var(--card)" }}>
-              <p className="text-[16px] font-medium mb-1">Код: SMS, Telegram и почта</p>
+              <p className="text-[16px] font-medium mb-1">Код: SMS и почта</p>
               <p className="text-[12px] text-[var(--muted-50)] mb-3">
-                SMS уходит через SMS.ru, Telegram — в бота {notify.telegram ? `@${notify.telegramBot || "подключён"}` : "не подключён"}. Почта {notify.email ? "включена" : "не настроена"}.
+                SMS уходит через SMS.ru. Почта {notify.email ? "включена" : "не настроена"}.
                 Для Mail.ru нужен пароль приложения, не пароль от ящика.
               </p>
               <div className="grid sm:grid-cols-2 gap-2 text-[13px]">
-                <input className="bg-black/30 rounded-[10px] px-3 py-2" placeholder="Имя бота без @" value={notify.telegramBot || ""} onChange={(e) => setNotify({ ...notify, telegramBot: e.target.value.replace(/^@/, "") })} />
-                <input className="bg-black/30 rounded-[10px] px-3 py-2" type="password" placeholder="Токен бота, пусто — не менять" value={notify.telegramBotToken || ""} onChange={(e) => setNotify({ ...notify, telegramBotToken: e.target.value })} />
                 <input className="bg-black/30 rounded-[10px] px-3 py-2" placeholder="SMS.ru API ID" value={notify.smsruApiId} onChange={(e) => setNotify({ ...notify, smsruApiId: e.target.value })} />
                 <input className="bg-black/30 rounded-[10px] px-3 py-2" placeholder="SMTP хост" value={notify.smtpHost} onChange={(e) => setNotify({ ...notify, smtpHost: e.target.value })} />
                 <input className="bg-black/30 rounded-[10px] px-3 py-2" placeholder="SMTP порт" value={String(notify.smtpPort)} onChange={(e) => setNotify({ ...notify, smtpPort: Number(e.target.value) || 465 })} />

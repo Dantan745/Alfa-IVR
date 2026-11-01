@@ -56,8 +56,7 @@ export default function QRPage({ onBack, incoming = null }: QRPageProps) {
   const [otpBusy, setOtpBusy] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [otpHint, setOtpHint] = useState("");
-  const [otpBot, setOtpBot] = useState("");
-  const [otpChannel, setOtpChannel] = useState<OtpChannel>(user?.otpChannel === "email" || user?.otpChannel === "telegram" ? user.otpChannel : "sms");
+  const [otpChannel, setOtpChannel] = useState<OtpChannel>(user?.otpChannel === "email" ? "email" : "sms");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -363,7 +362,6 @@ export default function QRPage({ onBack, incoming = null }: QRPageProps) {
         hint={otpHint}
         error={payError}
         busy={otpBusy}
-        botUrl={otpBot}
         onCancel={() => setOtpOpen(false)}
         onSend={() => {
           setOtpBusy(true);
@@ -371,12 +369,10 @@ export default function QRPage({ onBack, incoming = null }: QRPageProps) {
             if (r.error) setPayError(r.error);
             else if (r.needLink) {
               setPayError("");
-              setOtpBot(r.botUrl || "");
-              setOtpHint("Откройте Telegram, поделитесь номером и запросите код ещё раз.");
+              setOtpHint("Выберите SMS или почту и запросите код ещё раз.");
             } else {
               setPayError("");
-              setOtpBot("");
-              setOtpHint(r.via === "telegram" ? `Код в Telegram на ${r.masked}.` : `Код отправлен${r.masked ? ` на ${r.masked}` : ""}`);
+              setOtpHint(`Код отправлен${r.masked ? ` на ${r.masked}` : ""}`);
             }
           }).finally(() => setOtpBusy(false));
         }}

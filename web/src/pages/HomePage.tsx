@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { spendForecast } from "../forecast";
+import { incomeForecast } from "../forecast";
 import { formatHomeDate, formatRub, formatTxDate, greetingByHour, useWallet } from "../wallet";
 
 const ADVICE_KEY = "alfa-recommendation";
@@ -49,7 +49,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
   const monthTx = txs.filter((t) => t.createdAt >= monthStart && t.createdAt < monthEnd && t.status !== "rejected");
   const spent = monthTx.filter((t) => t.type === "expense").reduce((s, t) => s + Math.abs(t.amount), 0);
   const income = monthTx.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
-  const localForecast = spendForecast(txs, now.getTime());
+  const localForecast = incomeForecast(txs, now.getTime());
   const expected = localForecast.amount;
   const hidden = !!wallet?.hideBalance;
   const frozen = !!user?.frozen;
@@ -196,11 +196,11 @@ export default function HomePage({ onNavigate }: HomePageProps) {
           >
             Прогноз
           </p>
-          <p className="text-[var(--danger)] text-[20px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
-            {expected > 0 ? `−${formatRub(expected)} ₽` : "0,00 ₽"}
+          <p className="text-[#228D57] text-[20px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
+            {expected > 0 ? `+${formatRub(expected)} ₽` : "0,00 ₽"}
           </p>
           <p className="text-[var(--ink-soft)] text-[11px] mt-1" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
-            {`На ${localForecast.month}, ${localForecast.basis.toLowerCase()}`}
+            {`Доход на ${localForecast.month}. ${localForecast.basis}`}
           </p>
         </Card>
         <Card className="p-4" style={{ background: "var(--card)" }}>

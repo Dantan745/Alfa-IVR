@@ -34,7 +34,7 @@ export default function DiscussPage({ onBack }: { onBack: () => void }) {
         setAdvice(res.recommendation);
         sessionStorage.setItem(ADVICE_KEY, res.recommendation);
       } else {
-        setError("Сейчас нет текстовой рекомендации. На главной прогноз считается по тратам за 30 дней.");
+        setError("Сейчас нет текстовой рекомендации. На главной прогноз дохода считается по зачислениям за прошлые месяцы.");
       }
       setWait(false);
     }).catch((err: Error) => {
@@ -61,7 +61,7 @@ export default function DiscussPage({ onBack }: { onBack: () => void }) {
       const res = await api.recommendationChat(advice, next);
       const reply = res.reply && !/gemini|not supported|"error"/i.test(res.reply)
         ? res.reply
-        : "Не получилось ответить. Прогноз на главной считается по тратам за 30 дней.";
+        : "Не получилось ответить. Прогноз дохода на главной считается по зачислениям за прошлые месяцы.";
       const done = [...next, { role: "model" as const, text: reply }];
       setTurns(done);
       sessionStorage.setItem(CHAT_KEY, JSON.stringify(done));

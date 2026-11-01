@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 export const PAY_OTP_LIMIT = 10000;
 
-export type OtpChannel = "sms" | "telegram" | "email";
+export type OtpChannel = "sms" | "email";
 
 export function ChannelPick({
   channel,
@@ -14,10 +14,6 @@ export function ChannelPick({
   return (
     <div className="mb-4 rounded-[16px] p-3" style={{ background: "var(--line)", border: "1px solid var(--stroke-soft)" }}>
       <p className="text-[var(--muted-70)] text-[12px] uppercase tracking-[1px] mb-2">Куда отправить код</p>
-      <label className="flex items-start gap-3 mb-2 cursor-pointer">
-        <input type="radio" className="mt-1 accent-[var(--accent)]" checked={channel === "telegram"} onChange={() => onChange("telegram")} />
-        <span className="text-[var(--ink)] text-[14px]">В Telegram на этот номер</span>
-      </label>
       <label className="flex items-start gap-3 mb-2 cursor-pointer">
         <input type="radio" className="mt-1 accent-[var(--accent)]" checked={channel === "sms"} onChange={() => onChange("sms")} />
         <span className="text-[var(--ink)] text-[14px]">Обычное SMS на телефон</span>
@@ -38,7 +34,6 @@ export default function OtpPanel({
   code,
   onCode,
   error,
-  botUrl,
   lockChannel,
 }: {
   title?: string;
@@ -48,7 +43,6 @@ export default function OtpPanel({
   code: string;
   onCode: (v: string) => void;
   error?: string;
-  botUrl?: string;
   lockChannel?: boolean;
 }) {
   return (
@@ -61,14 +55,9 @@ export default function OtpPanel({
         inputMode="numeric"
         value={code}
         onChange={(e) => onCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-        placeholder="4–6 цифр из SMS, Telegram или письма"
+        placeholder="4–6 цифр из SMS или письма"
         className="w-full bg-[var(--field)] border-2 border-[var(--stroke)] rounded-[17px] px-4 py-3.5 text-[var(--ink)] text-[18px] tracking-[6px] text-center outline-none mb-2"
       />
-      {botUrl && (
-        <a href={botUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-full h-11 rounded-[16px] mb-3 font-medium" style={{ background: "linear-gradient(128deg,var(--fill),var(--fill-2))", color: "#0B1A1A" }}>
-          Открыть Telegram
-        </a>
-      )}
       {error && <p className="text-[var(--danger)] text-[12px] mb-2">{error}</p>}
     </div>
   );
@@ -87,7 +76,6 @@ export function PayOtpSheet({
   onCancel,
   onSend,
   onConfirm,
-  botUrl,
   emailOnly,
 }: {
   open: boolean;
@@ -102,7 +90,6 @@ export function PayOtpSheet({
   onCancel: () => void;
   onSend: () => void;
   onConfirm: () => void;
-  botUrl?: string;
   emailOnly?: boolean;
 }) {
   const [sent, setSent] = useState(false);
@@ -147,7 +134,7 @@ export function PayOtpSheet({
             ? "Код подтверждения уходит на почту. Введите его и подтвердите массовый платёж."
             : `Сумма ${amount.toLocaleString("ru-RU")} ₽ больше 10 000 ₽. Нужен одноразовый код.`}
         </p>
-        <OtpPanel channel={channel} onChannel={onChannel} code={code} onCode={onCode} hint={hint} error={error} botUrl={botUrl} lockChannel={emailOnly} />
+        <OtpPanel channel={channel} onChannel={onChannel} code={code} onCode={onCode} hint={hint} error={error} lockChannel={emailOnly} />
         <button
           type="button"
           disabled={busy}

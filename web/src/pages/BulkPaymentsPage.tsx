@@ -44,9 +44,8 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
   const [otpOpen, setOtpOpen] = useState(false);
   const [otpBusy, setOtpBusy] = useState(false);
   const [otpCode, setOtpCode] = useState("");
-  const [otpChannel, setOtpChannel] = useState<OtpChannel>(user?.otpChannel === "email" || user?.otpChannel === "telegram" ? user.otpChannel : "sms");
+  const [otpChannel, setOtpChannel] = useState<OtpChannel>(user?.otpChannel === "email" ? "email" : "sms");
   const [otpHint, setOtpHint] = useState("");
-  const [otpBot, setOtpBot] = useState("");
 
   const parsed = useMemo(
     () =>
@@ -95,7 +94,6 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
       setOtpChannel("email");
       setOtpCode("");
       setOtpHint("");
-      setOtpBot("");
       setMsg("");
       setOtpOpen(true);
       return;
@@ -268,7 +266,6 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
         hint={otpHint}
         error={msg}
         busy={otpBusy || sending}
-        botUrl={otpBot}
         emailOnly
         onCancel={() => setOtpOpen(false)}
         onSend={async () => {
@@ -278,12 +275,10 @@ export default function BulkPaymentsPage({ onBack }: BulkPaymentsProps) {
           if (r.error) setMsg(r.error);
           else if (r.needLink) {
             setMsg("");
-            setOtpBot(r.botUrl || "");
-            setOtpHint("Откройте Telegram, поделитесь номером и запросите код ещё раз.");
+            setOtpHint("Выберите SMS или почту и запросите код ещё раз.");
           } else {
             setMsg("");
-            setOtpBot("");
-            setOtpHint(r.via === "telegram" ? `Код в Telegram на ${r.masked}.` : r.fallback ? `На телефон не дошло — код на почте ${r.masked}.` : `Код отправлен на ${r.masked}.`);
+            setOtpHint(r.fallback ? `На телефон не дошло — код на почте ${r.masked}.` : `Код отправлен на ${r.masked}.`);
           }
         }}
         onConfirm={() => void runBulk(otpCode)}

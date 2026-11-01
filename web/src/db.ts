@@ -11,7 +11,7 @@ export type DbUser = {
   passport: string;
   walletId: string;
   createdAt: number;
-  otpChannel?: "sms" | "telegram" | "email";
+  otpChannel?: "sms" | "email";
   frozen?: boolean;
   freezeReason?: string;
   frozenAt?: number;

@@ -52,19 +52,18 @@ export default function SecurityPage({ onBack }: { onBack: () => void }) {
         />
         <div className="rounded-[20px] px-4 py-4 mb-3" style={{ background: "var(--card)" }}>
           <p className="text-[var(--ink)] text-[15px] font-medium">Куда присылать код</p>
-          <p className="text-[var(--muted-50)] text-[12px] mt-1 mb-3">Обычное SMS, Telegram или почта. На экране кода это можно выбрать заново.</p>
+          <p className="text-[var(--muted-50)] text-[12px] mt-1 mb-3">Обычное SMS или почта. На экране кода это можно выбрать заново.</p>
           <div className="flex gap-2">
             {([
               ["sms", "SMS"],
-              ["telegram", "Telegram"],
               ["email", "Почта"],
             ] as const).map(([id, label]) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => void updateSecurity({ otpChannel: id })}
-                className={`flex-1 h-10 rounded-[12px] text-[13px] pressable ${ (user?.otpChannel || "sms") === id ? "text-[#0B1A1A]" : "text-[var(--ink)]"}`}
-                style={{ background: (user?.otpChannel || "sms") === id ? "linear-gradient(128deg, var(--fill), var(--fill-2))" : "var(--field)" }}
+                className={`flex-1 h-10 rounded-[12px] text-[13px] pressable ${ (user?.otpChannel === "email" ? "email" : "sms") === id ? "text-[#0B1A1A]" : "text-[var(--ink)]"}`}
+                style={{ background: (user?.otpChannel === "email" ? "email" : "sms") === id ? "linear-gradient(128deg, var(--fill), var(--fill-2))" : "var(--field)" }}
               >
                 {label}
               </button>
@@ -96,7 +95,7 @@ export default function SecurityPage({ onBack }: { onBack: () => void }) {
         <div className="rounded-[20px] px-4 py-4 mb-3" style={{ background: "var(--card)" }}>
           <p className="text-[var(--ink)] text-[15px] font-medium">Двухфакторная защита</p>
           <p className="text-[var(--muted-50)] text-[12px] mt-1">
-            Код обязателен при входе, регистрации и платежах свыше 10 000 ₽. Его можно получить SMS, в Telegram или на почту. Массовый платёж всегда подтверждается кодом с почты, кроме демо-счёта.
+            Код обязателен при входе, регистрации и платежах свыше 10 000 ₽. Его можно получить SMS или на почту. Массовый платёж всегда подтверждается кодом с почты, кроме демо-счёта.
           </p>
         </div>
         <div className="rounded-[20px] px-4 py-4" style={{ background: "var(--card)" }}>

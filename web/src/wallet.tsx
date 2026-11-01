@@ -85,10 +85,10 @@ type WalletCtx = {
   pendingPayee: string;
   setPendingPayee: (v: string) => void;
   login: (email: string, password: string, code?: string) => Promise<string | null>;
-  requestCode: (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "telegram" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) => Promise<{ via?: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string; error?: string }>;
-  forgotPassword: (login: string, channel?: "sms" | "telegram" | "email") => Promise<{ via?: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string; error?: string }>;
+  requestCode: (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) => Promise<{ via?: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string; error?: string }>;
+  forgotPassword: (login: string, channel?: "sms" | "email") => Promise<{ via?: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string; error?: string }>;
   resetPassword: (login: string, code: string, password: string) => Promise<string | null>;
-  register: (u: Omit<DbUser, "passwordHash" | "walletId" | "createdAt"> & { password: string; code: string; channel?: "sms" | "telegram" | "email" }) => Promise<string | null>;
+  register: (u: Omit<DbUser, "passwordHash" | "walletId" | "createdAt"> & { password: string; code: string; channel?: "sms" | "email" }) => Promise<string | null>;
   logout: () => void;
   transfer: (payee: string, amount: number, comment?: string, code?: string) => Promise<string | null>;
   topUp: (amount: number) => Promise<string | null>;
@@ -100,7 +100,7 @@ type WalletCtx = {
   toggleFav: (id: string) => Promise<void>;
   removeContact: (id: string) => Promise<void>;
   bulkPay: (rows: { name: string; phone: string; amount: number }[], code?: string) => Promise<{ ok: number; fail: number; error?: string }>;
-  updateSecurity: (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "telegram" | "email" }) => Promise<void>;
+  updateSecurity: (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "email" }) => Promise<void>;
   updateLimits: (patch: Record<string, number>) => Promise<string | null>;
   addSupportNote: (text: string) => Promise<void>;
   setToast: (t: string) => void;
@@ -203,7 +203,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     };
   }, [authed, apply]);
 
-  const requestCode = useCallback(async (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "telegram" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) => {
+  const requestCode = useCallback(async (opts: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) => {
     try {
       const r = await api.requestCode(opts);
       return { via: r.via, masked: r.masked, fallback: r.fallback, needLink: r.needLink, botUrl: r.botUrl };
@@ -212,7 +212,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [fail]);
 
-  const forgotPassword = useCallback(async (loginId: string, channel?: "sms" | "telegram" | "email") => {
+  const forgotPassword = useCallback(async (loginId: string, channel?: "sms" | "email") => {
     try {
       const r = await api.forgot(loginId, channel);
       return { via: r.via, masked: r.masked, fallback: r.fallback, needLink: r.needLink, botUrl: r.botUrl };
@@ -242,7 +242,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [apply, fail]);
 
-  const register = useCallback(async (input: Omit<DbUser, "passwordHash" | "walletId" | "createdAt"> & { password: string; code: string; channel?: "sms" | "telegram" | "email" }) => {
+  const register = useCallback(async (input: Omit<DbUser, "passwordHash" | "walletId" | "createdAt"> & { password: string; code: string; channel?: "sms" | "email" }) => {
     try {
       clearAdviceStorage();
       apply(await api.register({
@@ -382,7 +382,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [apply, fail]);
 
-  const updateSecurity = useCallback(async (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "telegram" | "email" }) => {
+  const updateSecurity = useCallback(async (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "email" }) => {
     try {
       apply(await api.updateSecurity(patch), { quiet: true });
       setToast("Настройки сохранены");
