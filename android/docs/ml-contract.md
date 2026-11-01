@@ -5,16 +5,20 @@
 
 ## Вход
 
-`TxFeatures` (`ru.raidzyu.alfacr.ml.TxFeatures`):
+`TxFeatures` (`ru.raidzyu.alfacr.ml.TxFeatures`) и серверные фичи обучения (`server/ml/features.mjs`):
 
-| Поле | Смысл |
-|------|--------|
-| amountKopecks | сумма в копейках |
-| hourOfDay | 0–23 |
-| isNewPayee | получателя нет в адресной книге |
-| dailySpendKopecks | расход за сегодня + эта операция |
-| avgAbsAmountKopecks | средняя \|сумма\| (пока константа, можно считать из Room) |
-| category | категория |
+## Фичи, используемые для обучения модели антифрода
+
+1. `amount` — абсолютная сумма операции;
+2. `amount_to_avg_ratio` — во сколько раз операция превышает средний чек пользователя;
+3. `hour` — час суток (0-23);
+4. `is_night` — бинарный флаг ночной операции (с 23:00 до 06:00);
+5. `is_new_payee` — флаг первого перевода новому получателю (0 или 1);
+6. `login_attempts` — количество попыток входа (от 1 и выше);
+7. `time_since_last_transaction` — время после последней транзакции пользователя;
+8. `new_device` — сопоставляет id девайса и id аккаунта и смотрит, была ли раньше такая пара.
+
+На сервере модель коллеги: `server/ml/anti_fraud.joblib` + `anti_fraud_infer.py` (поля модели: amount, amount_to_avg_ratio, hour, login_attempts, is_new_payee, time_since_last_transaction, is_new_device; `is_night` идёт весом после скора).
 
 ## Выход
 

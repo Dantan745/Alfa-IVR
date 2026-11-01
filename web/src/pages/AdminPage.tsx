@@ -45,8 +45,14 @@ type MlReport = {
   forecast: { date: string; volumeOut: number; usersNew: number }[];
   anomalies: { id: string; email: string; amount: number; createdAt: number; counterparty: string; z: number; flags: string[]; score: number }[];
   riskUsers: { email: string; risk: number; reasons: string[]; balance: number; volumeOut: number; txCount: number }[];
-  features: { daily: { date: string; volumeOut: number; txCount: number; usersNew: number }[]; userCount: number; txWindow: number };
-  custom: unknown;
+  features: {
+    daily: { date: string; volumeOut: number; txCount: number; usersNew: number }[];
+    userCount: number;
+    txWindow: number;
+    fraudFeatures?: { name: string; title: string; desc: string }[];
+    fraud?: Record<string, unknown>[];
+  };
+  custom: { notes?: string; engine?: string | null } | null;
 };
 
 const KEY = "alfa-admin-key";
@@ -452,10 +458,29 @@ export default function AdminPage() {
             <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
               <p className="text-[16px] font-medium">Аналитика и прогноз</p>
               <p className="text-[13px] text-[rgba(185,202,203,0.55)] mt-1">
-                Движок: {ml?.model || "…"}. Коллега подключает модель в <code>server/ml/index.mjs</code> → <code>runCustomModel</code>.
+                Движок: {ml?.model || "…"}. Модель коллеги: <code>server/ml/anti_fraud.joblib</code> + <code>anti_fraud_infer.py</code>.
                 Фичи: <code>GET /api/admin/ml/features</code>, отчёт: <code>GET /api/admin/ml</code>.
               </p>
               <p className="text-[12px] text-[#00D2D3] mt-2">{mlMsg}</p>
+              {ml?.custom?.notes && <p className="text-[12px] text-[rgba(185,202,203,0.7)] mt-1">{ml.custom.notes}</p>}
+
+              <div className="mt-4">
+                <p className="text-[14px] font-medium mb-2">Фичи, используемые для обучения модели антифрода</p>
+                <ol className="text-[13px] text-[rgba(185,202,203,0.8)] list-decimal pl-5 space-y-1">
+                  {(ml?.features?.fraudFeatures || [
+                    { name: "amount", desc: "абсолютная сумма операции" },
+                    { name: "amount_to_avg_ratio", desc: "во сколько раз операция превышает средний чек пользователя" },
+                    { name: "hour", desc: "час суток (0-23)" },
+                    { name: "is_night", desc: "бинарный флаг ночной операции (с 23:00 до 06:00)" },
+                    { name: "is_new_payee", desc: "флаг первого перевода новому получателю (0 или 1)" },
+                    { name: "login_attempts", desc: "количество попыток входа (от 1 и выше)" },
+                    { name: "time_since_last_transaction", desc: "время после последней транзакции пользователя" },
+                    { name: "new_device", desc: "сопоставляет id девайса и id аккаунта и смотрит была ли раньше такая пара" },
+                  ]).map((f) => (
+                    <li key={f.name}><code className="text-[#00D2D3]">{f.name}</code> — {f.desc}</li>
+                  ))}
+                </ol>
+              </div>
               <div className="flex flex-wrap gap-2 mt-3">
                 <button type="button" className="px-3 py-2 rounded-[10px] text-[#0B1A1A] text-[13px]" style={{ background: "#00D2D3" }} onClick={() => void adminReq<MlReport>("/api/admin/ml").then(setMl)}>Пересчитать</button>
                 <button type="button" className="px-3 py-2 rounded-[10px] text-[#00D2D3] text-[13px]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void adminReq("/api/admin/ml/features").then((d) => downloadJson("ml-features.json", d))}>Скачать фичи</button>
