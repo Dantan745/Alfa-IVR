@@ -1,10 +1,11 @@
+// Вход, переводы, лимиты, антифрод, админка. Сайт тоже отсюда, если web/dist уже собран.
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { deliver, handleTelegramUpdate, hydrateNotify, loadNotify, maskPhone, phoneDeliveryPlan, publicNotify, saveNotify, startTelegramInbox, telegramHookOk } from "./notify.mjs";
+import { deliver, handleTelegramUpdate, hydrateNotify, loadNotify, maskPhone, publicNotify, saveNotify, startTelegramInbox, telegramHookOk } from "./notify.mjs";
 import { forecastNextMonth } from "./forecast.mjs";
 import { buildReport, extractFeatures, runCustomModel, scoreWithFriendModelAsync } from "./ml/index.mjs";
 import { recommendClient } from "./ml/recommend.mjs";
@@ -29,14 +30,17 @@ const EMAIL_OK = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
 const PAY_OTP_LIMIT = 10000;
 const CODE_TTL = 10 * 60 * 1000;
 
+// хеш строки, для сессий и кодов
 function sha256(text) {
   return crypto.createHash("sha256").update(text, "utf8").digest("hex");
 }
 
+// id операции, сессии, заметки
 function uid(prefix = "") {
   return prefix + crypto.randomUUID();
 }
 
+// дата со сдвигом назад, для демо-операций
 function nowOffset(days, hour, minute) {
   const d = new Date();
   d.setDate(d.getDate() - days);
@@ -44,6 +48,7 @@ function nowOffset(days, hour, minute) {
   return d.getTime();
 }
 
+// локальные ip, чтобы открыть сайт с телефона
 function lanAddresses() {
   const out = [];
   for (const list of Object.values(os.networkInterfaces())) {
@@ -55,16 +60,19 @@ function lanAddresses() {
   return [...new Set(out)].sort((a, b) => rank(a) - rank(b));
 }
 
+// лимиты, с которыми создаётся новый кошелёк
 function defaultLimits() {
   return { day: 50000, month: 100000, op: 30000, abroad: 10000, alertDay: 80, alertMonth: 70, alertOp: 90, alertAbroad: 100 };
 }
 
+// начало суток по Москве
 function startOfDay(ts = Date.now()) {
   const d = new Date(ts);
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
 
+// первое число месяца, тоже Москва
 function startOfMonth(ts = Date.now()) {
   const d = new Date(ts);
   d.setDate(1);
@@ -72,6 +80,7 @@ function startOfMonth(ts = Date.now()) {
   return d.getTime();
 }
 
+// лимиты клиента, пустые поля добиваем дефолтом
 async function limitsOf(email) {
   const wallet = await db.getWallet(email);
   const cap = defaultLimits();
@@ -86,6 +95,7 @@ async function limitsOf(email) {
   };
 }
 
+// уже потрачено сегодня и за месяц
 async function usageOf(email) {
   return {
     day: await db.spentSince(email, startOfDay(), true),
@@ -94,6 +104,7 @@ async function usageOf(email) {
   };
 }
 
+// не проводим, если сумма выше лимита
 async function assertLimits(email, amount) {
   const L = await limitsOf(email);
   const u = await usageOf(email);
@@ -108,10 +119,12 @@ async function assertLimits(email, amount) {
   }
 }
 
+// очередь на один счёт, два перевода не списывают баланс дважды
 function locked(fn) {
   return db.withTx(fn);
 }
 
+// ключ админки. пустой и короткий в проде не берём
 function adminKeyOk(presented) {
   const expected = ADMIN_KEY || (PRODUCTION ? "" : "AlfaDev-2026");
   if (!expected || (PRODUCTION && (expected === "AlfaDev-2026" || expected.length < 16))) return false;
@@ -121,6 +134,7 @@ function adminKeyOk(presented) {
   return crypto.timingSafeEqual(a, b);
 }
 
+// ip клиента, если стоим за прокси — из заголовка
 function clientIp(req) {
   const fly = String(req.headers["fly-client-ip"] || "").trim();
   if (fly) return fly.slice(0, 64);
@@ -129,6 +143,7 @@ function clientIp(req) {
 }
 
 const hits = new Map();
+// счётчик попыток в окне времени
 function tooMany(key, limit, windowMs) {
   const now = Date.now();
   const row = hits.get(key);
@@ -141,11 +156,13 @@ function tooMany(key, limit, windowMs) {
   return row.n > limit;
 }
 
+// тот же счётчик, просто да или нет
 function rateOver(key, limit) {
   const row = hits.get(key);
   return Boolean(row && row.reset > Date.now() && row.n >= limit);
 }
 
+// наружу не отдаём текст sql
 function publicError(err) {
   const m = String(err?.message || "");
   if (!m || m.length > 240 || /select |insert |update |delete |syntax|econn|authentication|relation |column |scrypt|password_hash/i.test(m)) {
@@ -154,12 +171,14 @@ function publicError(err) {
   return m;
 }
 
+// кошелёк в ответ api
 function publicWallet(wallet, extra = {}) {
   if (!wallet) return null;
   const { pin, ...rest } = wallet;
   return { ...rest, pinSet: Boolean(pin), ...extra };
 }
 
+// клиент в ответ, без хеша пароля
 function publicUser(u, extra = {}) {
   if (!u) return null;
   const { passwordHash, devices, freezeReason, frozenBy, frozenTxId, frozenAt, lockedUntil, ...rest } = u;
@@ -177,11 +196,13 @@ function publicUser(u, extra = {}) {
   return rest;
 }
 
+// записать новый пароль
 async function setUserPassword(user, password) {
   user.passwordHash = await hashPassword(password);
   await db.saveUser(user);
 }
 
+// сверить пароль. старый sha256 после входа переписываем на scrypt
 async function passwordOk(user, password) {
   const p = String(password || "");
   if (!p || !user?.passwordHash) return false;
@@ -194,16 +215,19 @@ async function passwordOk(user, password) {
   return true;
 }
 
+// модель ответила 0 или 1, а не пусто
 function modelMarked(anomaly) {
   return anomaly === 0 || anomaly === 1 || anomaly === "0" || anomaly === "1";
 }
 
+// скор числом, если он вообще пришёл
 function scoreNumber(final) {
   const n = Number(final);
   if (!Number.isFinite(n)) return null;
   return Math.round(n * 100) / 100;
 }
 
+// тот же скор в проценты для полоски в админке
 function scoreScale(final) {
   const exact = scoreNumber(final);
   if (exact == null) return { exact: null, ticks: null, bar: null };
@@ -211,6 +235,7 @@ function scoreScale(final) {
   return { exact, ticks, bar: Math.min(100, Math.max(0, ticks)) };
 }
 
+// для админки прогоняем последние операции через модель ещё раз
 async function liveModelMarks() {
   const scored = runCustomModel(extractFeatures(await db.loadModelStore())).scored || [];
   const map = new Map();
@@ -220,6 +245,7 @@ async function liveModelMarks() {
   return map;
 }
 
+// операция в админке, со скором и подписью фрод/норма
 function decorateAdminTx(t, marks) {
   const live = marks.get(t.id);
   if (!live) return decorateTx(t);
@@ -230,6 +256,7 @@ function decorateAdminTx(t, marks) {
   });
 }
 
+// операция как лежит в базе
 function decorateTx(t) {
   const scale = scoreScale(t.mlScore);
   const marked = modelMarked(t.mlAnomaly);
@@ -247,6 +274,7 @@ function decorateTx(t) {
   };
 }
 
+// клиенту без полей модели
 function publicTx(t) {
   const row = { ...t };
   delete row.mlFeatures;
@@ -267,6 +295,7 @@ function publicTx(t) {
   return row;
 }
 
+// колокольчик
 async function publicNotes(email) {
   const notes = await db.listNotes(email);
   return notes
@@ -274,6 +303,7 @@ async function publicNotes(email) {
     .filter((n) => !/мошенн|антифрод|аномал|подозрит/i.test(`${n.title} ${n.body}`));
 }
 
+// снимок после входа: баланс, операции, прогноз, лимиты
 async function snapshot(email) {
   const user = await db.getUser(email);
   const wallet = await db.getWallet(email);
@@ -287,6 +317,7 @@ async function snapshot(email) {
   return { user: publicUser(user), wallet: publicWallet(wallet, { limits: L, usage }), txs, notes, contacts, forecast };
 }
 
+// id устройства из заголовка
 function requestDeviceId(req) {
   const h = String(req.headers["x-device-id"] || "").trim().slice(0, 64);
   if (h) return h;
@@ -295,6 +326,7 @@ function requestDeviceId(req) {
   return sha256(ua + "|" + ip.split(",")[0]).slice(0, 32);
 }
 
+// сессия на 14 дней
 async function issueSession(email, extra = {}) {
   const token = crypto.randomBytes(24).toString("hex");
   await db.insertSession(token, {
@@ -307,6 +339,7 @@ async function issueSession(email, extra = {}) {
   return token;
 }
 
+// сессия по Bearer
 async function sessionOf(req) {
   const h = req.headers.authorization || "";
   const token = h.startsWith("Bearer ") ? h.slice(7) : "";
@@ -317,16 +350,19 @@ async function sessionOf(req) {
   return session;
 }
 
+// кто сейчас залогинен
 async function authEmail(req) {
   return (await sessionOf(req))?.email || null;
 }
 
+// текст, если вход закрыт после 8 ошибок
 function lockedMessage(user) {
   if (!user?.lockedUntil || user.lockedUntil <= Date.now()) return "";
   const min = Math.max(1, Math.ceil((user.lockedUntil - Date.now()) / 60000));
   return `Слишком много попыток. Повторите через ${min} мин.`;
 }
 
+// считаем ошибки, на восьмой закрываем на 15 минут
 async function rememberLoginFail(user) {
   if (!user) return;
   user.loginAttempts = Math.max(1, Number(user.loginAttempts) || 1) + 1;
@@ -334,6 +370,7 @@ async function rememberLoginFail(user) {
   await db.saveUser(user);
 }
 
+// сбросить счётчик и запомнить устройство
 async function rememberLoginOk(user, deviceId) {
   const attempts = Math.max(1, Number(user.loginAttempts) || 1);
   user.lastLoginAttempts = attempts;
@@ -348,6 +385,7 @@ async function rememberLoginOk(user, deviceId) {
   return { attempts, newDevice };
 }
 
+// перед списанием собираем признаки и зовём модель
 async function scoreOutgoing(email, amount, payee, sess, type = "expense") {
   const user = await db.getUser(email);
   const wallet = await db.getWallet(email);
@@ -375,14 +413,17 @@ async function scoreOutgoing(email, amount, payee, sess, type = "expense") {
   };
 }
 
+// платёж режем, если модель поставила anomaly
 function modelBlocks(fraud) {
   return Boolean(fraud && fraud.engine !== "unavailable" && Number(fraud.anomaly) === 1);
 }
 
+// клиенту пишем нейтрально, без слова фрод
 function clientBlockedMsg() {
   return "Операция отклонена. Попробуйте позже или напишите в поддержку.";
 }
 
+// скор и признаки, которые дописываем в операцию
 function mlPatch(fraud) {
   const marked = fraud && fraud.engine !== "unavailable" && modelMarked(fraud.anomaly);
   return {
@@ -392,22 +433,27 @@ function mlPatch(fraud) {
   };
 }
 
+// только цифры из строки
 function digits(s) {
   return String(s || "").replace(/\D/g, "");
 }
 
+// найти клиента по почте или телефону
 function findUserByLogin(login) {
   return db.findUserByLogin(login);
 }
 
+// номер уже есть у другого клиента
 function phoneTaken(phone, exceptEmail) {
   return db.phoneTaken(phone, exceptEmail);
 }
 
+// кому уходит перевод
 function findPayee(query, fromEmail) {
   return db.findPayee(query, fromEmail);
 }
 
+// это тот же счёт, с которого платят
 async function isSelfPayee(fromEmail, query) {
   const me = await db.getUser(fromEmail);
   if (!me) return false;
@@ -419,12 +465,14 @@ async function isSelfPayee(fromEmail, query) {
   return samePhone(q, me.phone);
 }
 
+// себе переводить нельзя
 async function assertNotSelf(fromEmail, query) {
   if (await isSelfPayee(fromEmail, query)) {
     throw new Error("Нельзя перевести деньги самому себе");
   }
 }
 
+// замороженный счёт не платит и не получает
 async function assertNotFrozen(email) {
   const user = await db.getUser(email);
   if (user?.frozen) {
@@ -432,6 +480,7 @@ async function assertNotFrozen(email) {
   }
 }
 
+// заморозить счёт и написать в журнал
 async function freezeAccount(email, reason, extra = {}) {
   const user = await db.getUser(email);
   if (!user) return false;
@@ -448,6 +497,7 @@ async function freezeAccount(email, reason, extra = {}) {
   return !already;
 }
 
+// снять заморозку
 async function unfreezeAccount(email) {
   const user = await db.getUser(email);
   if (!user) return false;
@@ -461,6 +511,7 @@ async function unfreezeAccount(email) {
   return true;
 }
 
+// операция на проверке, получателю ещё не зачислено
 async function holdTx(tx, reason, extra = {}) {
   if (!tx || tx.status === "held" || tx.status === "rejected") return;
   tx.status = "held";
@@ -472,6 +523,7 @@ async function holdTx(tx, reason, extra = {}) {
   await audit("tx.hold", { email: tx.email, txId: tx.id, reason, by: tx.heldBy });
 }
 
+// админ пропустил — зачислить получателю
 async function creditPayeeFromHeld(tx) {
   const query = tx.holdQuery || tx.counterparty || tx.name;
   const found = await db.resolvePayee(query, tx.email);
@@ -496,6 +548,7 @@ async function creditPayeeFromHeld(tx) {
   return inTx;
 }
 
+// снять удержание и провести
 async function releaseHeldTx(tx, by = "admin") {
   if (!tx || tx.status !== "held") throw new Error("Операция не заморожена");
   await locked(async () => {
@@ -510,6 +563,7 @@ async function releaseHeldTx(tx, by = "admin") {
   });
 }
 
+// отклонить, сумму вернуть той стороне, у кого её удержали
 async function rejectHeldTx(tx, by = "admin") {
   if (!tx || tx.status !== "held") throw new Error("Операция не заморожена");
   await locked(async () => {
@@ -547,10 +601,12 @@ async function rejectHeldTx(tx, by = "admin") {
   });
 }
 
+// строка в журнал действий
 function audit(action, detail) {
   return db.insertAudit(uid("a-"), action, detail || {}, Date.now());
 }
 
+// код на 10 минут, в базе лежит хеш
 async function putCode(purpose, email, channel, dest) {
   const code = String(Math.floor(100000 + Math.random() * 900000));
   const prev = await db.getCode(purpose, email);
@@ -563,10 +619,12 @@ async function putCode(purpose, email, channel, dest) {
   return rec;
 }
 
+// хеш кода
 function codeHash(code) {
   return crypto.createHash("sha256").update(String(code)).digest("hex");
 }
 
+// сравнение кода без подсказки по времени
 function safeCodeEqual(stored, got) {
   const expect = /^[a-f0-9]{64}$/i.test(stored) ? codeHash(got) : String(got);
   const left = Buffer.from(String(stored).toLowerCase());
@@ -576,6 +634,7 @@ function safeCodeEqual(stored, got) {
 }
 
 const otpFails = new Map();
+// код верный — принимаем и сразу гасим
 async function takeCode(purpose, email, code) {
   const rec = await db.getCode(purpose, email);
   const got = String(code || "").trim();
@@ -594,14 +653,17 @@ async function takeCode(purpose, email, code) {
   return false;
 }
 
+// последний код клиента, его видно в админке
 function lastCodeFor(email) {
   return db.lastCodeFor(email);
 }
 
+// код нужен от 10 000, демо без кода
 function needPayOtp(email, amount) {
   return amount > PAY_OTP_LIMIT && email !== DEMO_EMAIL;
 }
 
+// крупный платёж без кода не проводим
 async function assertPayCode(email, amount, code) {
   if (!needPayOtp(email, amount)) return true;
   if (!(await takeCode("pay", email, code))) {
@@ -610,6 +672,7 @@ async function assertPayCode(email, amount, code) {
   return true;
 }
 
+// массовый платёж, код с почты
 async function assertBulkCode(email, amount, code) {
   if (!(Number(amount) > 0) || email === DEMO_EMAIL) return true;
   if (!(await takeCode("pay", email, code))) {
@@ -618,6 +681,7 @@ async function assertBulkCode(email, amount, code) {
   return true;
 }
 
+// запись в колокольчик
 function addNote(email, title, body, kind = "transfer", extra = {}) {
   return db.insertNote({
     id: uid("n-"),
@@ -631,6 +695,7 @@ function addNote(email, title, body, kind = "transfer", extra = {}) {
   });
 }
 
+// провести операцию и двинуть баланс
 async function addTx(email, partial) {
   return locked(async () => {
     const wallet = await db.lockWallet(email);
@@ -652,6 +717,7 @@ async function addTx(email, partial) {
   });
 }
 
+// json из тела запроса
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -681,6 +747,7 @@ const APP_ORIGINS = new Set([
   "app://alfa",
 ]);
 
+// заголовки ответа, cors
 function headersFor(req) {
   const origin = String(req.headers.origin || "");
   if (!APP_ORIGINS.has(origin)) return SECURITY_HEADERS;
@@ -708,12 +775,14 @@ const SECURITY_HEADERS = {
 const ADMIN_COOKIE = "alfa_admin";
 let adminEpoch = 1;
 
+// секрет куки админки
 function adminSecret() {
   const expected = ADMIN_KEY || (PRODUCTION ? "" : "AlfaDev-2026");
   if (!expected || (PRODUCTION && (expected === "AlfaDev-2026" || expected.length < 16))) return "";
   return expected;
 }
 
+// сама кука
 function adminCookieValue() {
   const secret = adminSecret();
   if (!secret) return "";
@@ -723,6 +792,7 @@ function adminCookieValue() {
   return `${body}.${mac}`;
 }
 
+// достать куку по имени
 function readCookie(req, name) {
   const raw = String(req.headers.cookie || "");
   for (const part of raw.split(";")) {
@@ -733,6 +803,7 @@ function readCookie(req, name) {
   return "";
 }
 
+// поставить или стереть куку админки
 function setAdminCookie(res, clear, req) {
   const proto = String(req?.headers?.["x-forwarded-proto"] || "").split(",")[0].trim();
   const https = proto === "https" || req?.socket?.encrypted === true;
@@ -742,6 +813,7 @@ function setAdminCookie(res, clear, req) {
   res.setHeader("Set-Cookie", `${ADMIN_COOKIE}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${secure}`);
 }
 
+// админ зашёл кукой или заголовком X-Admin-Key
 function adminSessionOk(req) {
   const got = readCookie(req, ADMIN_COOKIE);
   const secret = adminSecret();
@@ -757,6 +829,7 @@ function adminSessionOk(req) {
   return crypto.timingSafeEqual(left, right);
 }
 
+// ответ json
 function send(res, status, body) {
   const data = JSON.stringify(body);
   const cookie = res.getHeader("Set-Cookie");
@@ -770,6 +843,7 @@ function send(res, status, body) {
   res.end(data);
 }
 
+// тип файла для статики
 function mime(file) {
   if (file.endsWith(".html")) return "text/html; charset=utf-8";
   if (file.endsWith(".js")) return "text/javascript; charset=utf-8";
@@ -781,12 +855,14 @@ function mime(file) {
   return "application/octet-stream";
 }
 
+// файл точно внутри web/dist, не выше
 function insideDist(file) {
   const root = path.resolve(DIST);
   const rel = path.relative(root, file);
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
+// отдать собранный сайт
 function serveStatic(req, res, urlPath) {
   if (!fs.existsSync(DIST)) return false;
   let rel = decodeURIComponent(urlPath.split("?")[0]);
@@ -848,7 +924,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "POST" && (p === "/api/auth/request-code" || p === "/api/otp/send")) {
         const b = await readBody(req);
         const purpose = ["login", "register", "pay"].includes(b.purpose) ? b.purpose : "login";
-        const channel = b.channel === "email" || b.channel === "sms" || b.channel === "telegram" ? b.channel : "";
+        const channel = b.channel === "email" ? "email" : b.channel === "sms" || b.channel === "telegram" ? "sms" : "";
         const authed = await authEmail(req);
 
         if (purpose === "pay") {
@@ -860,11 +936,8 @@ const server = http.createServer(async (req, res) => {
             return send(res, 200, { ok: true, via: "skip", masked: "" });
           }
           const user = await db.getUser(authed);
-          const ch = bulk ? "email" : (channel || user.otpChannel || "sms");
-          if (ch === "telegram") {
-            const plan = await phoneDeliveryPlan(user.phone);
-            if (plan.mode === "link") return send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: plan.botUrl, masked: maskPhone(user.phone) });
-          }
+          const saved = user.otpChannel === "email" ? "email" : "sms";
+          const ch = bulk ? "email" : (channel || saved);
           try {
             const rec = await putCode("pay", authed, ch, ch === "email" ? user.email : user.phone);
             if (!PRODUCTION) console.log(`[код pay] ${authed} → ${rec.code} (${ch})`);
@@ -883,10 +956,6 @@ const server = http.createServer(async (req, res) => {
           if (await db.getUser(email)) return send(res, 400, { error: "Такой email уже зарегистрирован" });
           if (await phoneTaken(phone, email)) return send(res, 400, { error: "Этот номер телефона уже занят" });
           const ch = channel || "sms";
-          if (ch === "telegram") {
-            const plan = await phoneDeliveryPlan(phone);
-            if (plan.mode === "link") return send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: plan.botUrl, masked: maskPhone(phone) });
-          }
           try {
             const rec = await putCode("register", email, ch, ch === "email" ? email : phone);
             if (!PRODUCTION) console.log(`[код register] ${email} / ${phone} → ${rec.code} (${ch})`);
@@ -906,11 +975,7 @@ const server = http.createServer(async (req, res) => {
           return send(res, 400, { error: "Неверный пароль" });
         }
         if (user.email === DEMO_EMAIL) return send(res, 200, { ok: true, via: "demo", masked: "демо" });
-        const ch = channel || user.otpChannel || "sms";
-        if (ch === "telegram") {
-          const plan = await phoneDeliveryPlan(user.phone);
-          if (plan.mode === "link") return send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: plan.botUrl, masked: maskPhone(user.phone) });
-        }
+        const ch = channel || (user.otpChannel === "email" ? "email" : "sms");
         try {
           const rec = await putCode("login", user.email, ch, ch === "email" ? user.email : user.phone);
           if (!PRODUCTION) console.log(`[код login] ${user.email} / ${user.phone} → ${rec.code} (${ch})`);
@@ -946,7 +1011,7 @@ const server = http.createServer(async (req, res) => {
           passport: String(b.passport || "").trim(),
           walletId: "WLT-" + crypto.randomBytes(4).toString("hex").toUpperCase() + "-ЦР",
           createdAt: Date.now(),
-          otpChannel: b.channel === "email" || b.channel === "telegram" ? b.channel : "sms",
+          otpChannel: b.channel === "email" ? "email" : "sms",
           loginAttempts: 1,
           lastLoginAttempts: 1,
           devices: deviceId ? [deviceId] : [],
@@ -997,11 +1062,7 @@ const server = http.createServer(async (req, res) => {
         if (wait) return send(res, 429, { error: wait });
         if (user.frozen) return send(res, 403, { error: "Счёт заблокирован. Обратитесь в поддержку." });
         if (user.email === DEMO_EMAIL) return send(res, 200, { ok: true, via: "demo", masked: "демо" });
-        const ch = b.channel === "sms" || b.channel === "telegram" ? b.channel : "email";
-        if (ch === "telegram") {
-          const plan = await phoneDeliveryPlan(user.phone);
-          if (plan.mode === "link") return send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: plan.botUrl, masked: maskPhone(user.phone) });
-        }
+        const ch = b.channel === "sms" || b.channel === "telegram" ? "sms" : "email";
         try {
           const rec = await putCode("reset", user.email, ch, ch === "email" ? user.email : user.phone);
           if (!PRODUCTION) console.log(`[код reset] ${user.email} → ${rec.code} (${ch})`);
@@ -1566,7 +1627,7 @@ const server = http.createServer(async (req, res) => {
         await db.saveWallet(w);
         if (b.otpChannel === "email" || b.otpChannel === "sms" || b.otpChannel === "telegram") {
           const user = await db.getUser(email);
-          user.otpChannel = b.otpChannel;
+          user.otpChannel = b.otpChannel === "email" ? "email" : "sms";
           await db.saveUser(user);
         }
         send(res, 200, await snapshot(email));
@@ -1594,10 +1655,6 @@ const server = http.createServer(async (req, res) => {
         const del = await deliver(res.otpJob);
         send(res, 200, { ok: true, via: del.via, masked: del.masked, ttl: 600, fallback: Boolean(del.fallback), needLink: false, botUrl: "" });
       } catch (e) {
-        if (e.needLink) {
-          send(res, 200, { ok: true, via: "telegram", needLink: true, botUrl: e.botUrl || "", masked: "", ttl: 600 });
-          return;
-        }
         const job = res.otpJob;
         const canSkip = !PRODUCTION && job && ["login", "register"].includes(job.purpose) && job.owner;
         if (canSkip) {

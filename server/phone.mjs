@@ -1,3 +1,5 @@
+// Российский мобильный. В базе и в смс номер один и тот же, в интерфейсе с пробелами.
+// к 11 цифрам, 8 в начале меняем на 7
 export function ruMobileDigits(raw) {
   let d = String(raw || "").replace(/\D/g, "");
   if (!d) return "";
@@ -7,10 +9,12 @@ export function ruMobileDigits(raw) {
   return d.slice(0, 11);
 }
 
+// мобильный РФ: 79 и ещё 9 цифр
 export function isRuMobile(raw) {
   return /^79\d{9}$/.test(ruMobileDigits(raw));
 }
 
+// как показываем в интерфейсе: +7 (9xx) xxx-xx-xx
 export function formatRuPhone(raw) {
   let d = ruMobileDigits(raw);
   if (!d) return "";
@@ -27,6 +31,7 @@ export function formatRuPhone(raw) {
   return out;
 }
 
+// один номер, даже если записан по-разному
 export function samePhone(a, b) {
   const da = ruMobileDigits(a);
   const db = ruMobileDigits(b);

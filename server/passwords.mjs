@@ -1,3 +1,4 @@
+// Пароли на scrypt. Старый sha256 ещё проверяем, после удачного входа переписываем.
 import crypto from "node:crypto";
 import { promisify } from "node:util";
 
@@ -5,12 +6,14 @@ const scrypt = promisify(crypto.scrypt);
 const SCRYPT = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const KEYLEN = 64;
 
+// scrypt, соль на каждый пароль
 export async function hashPassword(password) {
   const salt = crypto.randomBytes(16);
   const key = await scrypt(String(password), salt, KEYLEN, SCRYPT);
   return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString("hex")}$${key.toString("hex")}`;
 }
 
+// сравнение хешей одинаковой длины, без раннего выхода
 function safeEqual(a, b) {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
@@ -18,6 +21,7 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(left, right);
 }
 
+// scrypt как сейчас храним. старые учётки ещё на sha256
 export async function verifyPassword(password, stored) {
   const raw = String(stored || "");
   const parts = raw.split("$");
@@ -36,6 +40,7 @@ export async function verifyPassword(password, stored) {
   return safeEqual(got, sha.toLowerCase());
 }
 
+// уже новый формат или ещё нет
 export function isScryptHash(stored) {
   return String(stored || "").startsWith("scrypt$");
 }

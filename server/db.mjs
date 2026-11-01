@@ -1,3 +1,4 @@
+// Postgres: таблицы, запросы, разбор строк. Деньги в базе со знаком, как в ленте.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -204,20 +205,24 @@ const txSql = `
 let pool;
 const als = new AsyncLocalStorage();
 
+// строка подключения. локально alfa/alfa, в проде только из env
 function databaseUrl() {
   if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
   if (process.env.NODE_ENV === "production") throw new Error("Задайте DATABASE_URL для PostgreSQL");
   return "postgresql://alfa:alfa@127.0.0.1:5432/alfa";
 }
 
+// пул. внутри транзакции берём её соединение, не новое
 function client() {
   return als.getStore() || pool;
 }
 
+// обычный запрос
 export function query(text, params = []) {
   return client().query(text, params);
 }
 
+// транзакция. если уже внутри другой — не открываем вторую
 export function withTx(fn) {
   if (als.getStore()) return fn();
   return pool.connect().then(async (conn) => {
@@ -235,6 +240,7 @@ export function withTx(fn) {
   });
 }
 
+// строка app_user в объект клиента
 function mapUser(row) {
   if (!row) return null;
   return {
@@ -260,6 +266,7 @@ function mapUser(row) {
   };
 }
 
+// кошелёк плюс копилки
 function mapWallet(row, savings) {
   if (!row) return null;
   return {
@@ -282,6 +289,7 @@ function mapWallet(row, savings) {
   };
 }
 
+// операция. сумму держим как есть, со знаком
 function mapTx(row) {
   if (!row) return null;
   const features = row.ml_features && typeof row.ml_features === "object" ? row.ml_features : null;
@@ -311,6 +319,7 @@ function mapTx(row) {
   };
 }
 
+// уведомление
 function mapNote(row) {
   return {
     id: row.id,
@@ -324,6 +333,7 @@ function mapNote(row) {
   };
 }
 
+// сохранённый получатель
 function mapContact(row) {
   if (!row) return null;
   return {
@@ -338,16 +348,19 @@ function mapContact(row) {
   };
 }
 
+// копилки этого счёта
 async function savingsOf(email) {
   const r = await query("SELECT id, name, amount FROM savings WHERE email = $1 ORDER BY id", [email]);
   return r.rows.map((row) => ({ id: row.id, name: row.name, amount: Number(row.amount) }));
 }
 
+// клиент по почте
 export async function getUser(email) {
   const r = await query(`${userSql} WHERE u.email = $1 GROUP BY u.email`, [String(email || "").toLowerCase()]);
   return mapUser(r.rows[0]);
 }
 
+// вход: почта или телефон
 export async function findUserByLogin(login) {
   const raw = String(login || "").trim();
   if (!raw) return null;
@@ -359,6 +372,7 @@ export async function findUserByLogin(login) {
   return mapUser(r.rows[0]);
 }
 
+// кому платят: телефон, почта или номер кошелька
 export async function resolvePayee(queryText, fromEmail) {
   const q = String(queryText || "").trim();
   if (!q) return { user: null, ambiguous: false };
@@ -393,6 +407,7 @@ export async function resolvePayee(queryText, fromEmail) {
   return { user: null, ambiguous: false };
 }
 
+// chat id, если номер уже привязан к боту
 export async function getTelegramChat(phone) {
   const digits = ruMobileDigits(phone);
   const key = digits.length >= 10 ? digits.slice(-10) : "";
@@ -401,6 +416,7 @@ export async function getTelegramChat(phone) {
   return r.rows[0] ? String(r.rows[0].chat_id) : "";
 }
 
+// запомнить chat id телефона
 export async function saveTelegramChat(phone, chatId) {
   const digits = ruMobileDigits(phone);
   const key = digits.length >= 10 ? digits.slice(-10) : "";
@@ -412,11 +428,13 @@ export async function saveTelegramChat(phone, chatId) {
   );
 }
 
+// обёртка над resolvePayee
 export async function findPayee(queryText, fromEmail) {
   const found = await resolvePayee(queryText, fromEmail);
   return found.ambiguous ? null : found.user;
 }
 
+// номер занят другим клиентом
 export async function phoneTaken(phone, exceptEmail) {
   const digits = ruMobileDigits(phone);
   if (digits.length < 10) return false;
@@ -427,6 +445,7 @@ export async function phoneTaken(phone, exceptEmail) {
   return r.rowCount > 0;
 }
 
+// новый клиент
 export async function insertUser(user) {
   await query(
     `INSERT INTO app_user (
@@ -447,6 +466,7 @@ export async function insertUser(user) {
   }
 }
 
+// обновить клиента
 export async function saveUser(user) {
   await query(
     `UPDATE app_user SET
@@ -469,28 +489,33 @@ export async function saveUser(user) {
   }
 }
 
+// смена почты, она же первичный ключ
 export async function renameUser(from, to) {
   await query("UPDATE otp_code SET email = $2 WHERE email = $1", [from, to]);
   await query("UPDATE app_user SET email = $2 WHERE email = $1", [from, to]);
 }
 
+// удалить клиента и всё, что на него ссылается
 export async function deleteUser(email) {
   await query("DELETE FROM otp_code WHERE email = $1", [email]);
   await query("DELETE FROM app_user WHERE email = $1", [email]);
 }
 
+// кошелёк
 export async function getWallet(email) {
   const r = await query("SELECT * FROM wallet WHERE email = $1", [email]);
   if (!r.rows[0]) return null;
   return mapWallet(r.rows[0], await savingsOf(email));
 }
 
+// блокируем строку кошелька на время списания
 export async function lockWallet(email) {
   const r = await query("SELECT * FROM wallet WHERE email = $1 FOR UPDATE", [email]);
   if (!r.rows[0]) return null;
   return mapWallet(r.rows[0], await savingsOf(email));
 }
 
+// деньги с копейками, кривые значения в ноль
 function money(value, fallback = 0) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -500,12 +525,14 @@ function money(value, fallback = 0) {
   return rounded;
 }
 
+// процент лимита, не больше 100
 function percent(value, fallback) {
   const n = Math.round(Number(value));
   if (!Number.isFinite(n)) return fallback;
   return Math.min(100, Math.max(0, n));
 }
 
+// новый кошелёк
 export async function insertWallet(wallet) {
   const limits = wallet.limits || {};
   await query(
@@ -524,6 +551,7 @@ export async function insertWallet(wallet) {
   }
 }
 
+// сохранить баланс, лимиты, копилки
 export async function saveWallet(wallet) {
   const limits = wallet.limits || {};
   await query(
@@ -540,6 +568,7 @@ export async function saveWallet(wallet) {
   );
 }
 
+// пополнения с даты, для лимита
 export async function topupSince(email, fromTs) {
   const r = await query(
     `SELECT COALESCE(SUM(amount), 0) AS topped
@@ -550,6 +579,7 @@ export async function topupSince(email, fromTs) {
   return Number(r.rows[0].topped);
 }
 
+// траты с даты. transfersOnly — только переводы людям
 export async function spentSince(email, fromTs, transfersOnly) {
   const r = await query(
     `SELECT COALESCE(SUM(ABS(amount)), 0) AS spent
@@ -561,6 +591,7 @@ export async function spentSince(email, fromTs, transfersOnly) {
   return Number(r.rows[0].spent);
 }
 
+// метка антифрода рядом с операцией
 async function writeMark(tx) {
   const marked = tx.mlAnomaly === 0 || tx.mlAnomaly === 1 || tx.mlScore != null || tx.mlFeatures;
   if (!marked) return;
@@ -572,6 +603,7 @@ async function writeMark(tx) {
   );
 }
 
+// новая операция
 export async function insertTx(tx) {
   await query(
     `INSERT INTO tx (
@@ -588,6 +620,7 @@ export async function insertTx(tx) {
   return tx;
 }
 
+// обновить статус, скор, комментарий
 export async function saveTx(tx) {
   await query(
     `UPDATE tx SET
@@ -598,21 +631,25 @@ export async function saveTx(tx) {
   await writeMark(tx);
 }
 
+// одна операция
 export async function getTx(id) {
   const r = await query(`${txSql} WHERE t.id = $1`, [id]);
   return mapTx(r.rows[0]);
 }
 
+// лента клиента, новые сверху
 export async function listTxsByEmail(email) {
   const r = await query(`${txSql} WHERE t.email = $1 ORDER BY t.created_at DESC`, [email]);
   return r.rows.map(mapTx);
 }
 
+// сколько операций у клиента
 export async function countTxs(email) {
   const r = await query("SELECT count(*)::int AS n FROM tx WHERE email = $1", [email]);
   return r.rows[0].n;
 }
 
+// лента для админки, можно фильтровать
 export async function adminTxs({ q = "", type = "" } = {}) {
   const where = [];
   const params = [];
@@ -630,6 +667,7 @@ export async function adminTxs({ q = "", type = "" } = {}) {
   return { txs: rows.rows.map(mapTx), total: total.rows[0].n };
 }
 
+// уведомление
 export async function insertNote(note) {
   await query(
     "INSERT INTO note (id, email, tx_id, title, body, kind, created_at, read) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
@@ -638,19 +676,23 @@ export async function insertNote(note) {
   return note;
 }
 
+// уведомления клиента
 export async function listNotes(email) {
   const r = await query("SELECT * FROM note WHERE email = $1 ORDER BY created_at DESC", [email]);
   return r.rows.map(mapNote);
 }
 
+// прочитать все
 export async function markNotesRead(email) {
   await query("UPDATE note SET read = true WHERE email = $1", [email]);
 }
 
+// прочитать одно
 export async function markNoteRead(email, id) {
   await query("UPDATE note SET read = true WHERE email = $1 AND id = $2", [email, id]);
 }
 
+// сохранить получателя
 export async function insertContact(contact) {
   await query(
     "INSERT INTO contact (id, owner_email, name, phone, shown_wallet, initials, color, favorite) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
@@ -658,30 +700,36 @@ export async function insertContact(contact) {
   );
 }
 
+// сохранённые получатели
 export async function listContacts(email) {
   const r = await query("SELECT * FROM contact WHERE owner_email = $1 ORDER BY favorite DESC, name", [email]);
   return r.rows.map(mapContact);
 }
 
+// один контакт
 export async function getContact(email, id) {
   const r = await query("SELECT * FROM contact WHERE owner_email = $1 AND id = $2", [email, id]);
   return mapContact(r.rows[0] || null) || null;
 }
 
+// убрать контакт
 export async function deleteContact(email, id) {
   const r = await query("DELETE FROM contact WHERE owner_email = $1 AND id = $2", [email, id]);
   return r.rowCount > 0;
 }
 
+// звёздочка у контакта
 export async function setContactFavorite(email, id, favorite) {
   const r = await query("UPDATE contact SET favorite = $3 WHERE owner_email = $1 AND id = $2", [email, id, favorite]);
   return r.rowCount > 0;
 }
 
+// в базе не сам токен, а его хеш
 function sessionKey(token) {
   return crypto.createHash("sha256").update(String(token || "")).digest("hex");
 }
 
+// новая сессия
 export async function insertSession(token, session) {
   await query(
     "INSERT INTO session (token, email, expires_at, device_id, new_device, login_attempts) VALUES ($1,$2,$3,$4,$5,$6)",
@@ -689,6 +737,7 @@ export async function insertSession(token, session) {
   );
 }
 
+// найти сессию, протухшие выкидываем
 export async function getSession(token) {
   if (!token) return null;
   const r = await query("SELECT * FROM session WHERE token = $1", [sessionKey(token)]);
@@ -707,19 +756,23 @@ export async function getSession(token) {
   };
 }
 
+// выход
 export async function deleteSession(token) {
   if (token) await query("DELETE FROM session WHERE token = $1", [sessionKey(token)]);
 }
 
+// выкинуть все сессии клиента
 export async function deleteUserSessions(email) {
   await query("DELETE FROM session WHERE email = $1", [email]);
 }
 
+// сколько живых сессий
 export async function countSessions(email) {
   const r = await query("SELECT count(*)::int AS n FROM session WHERE email = $1 AND expires_at >= $2", [email, Date.now()]);
   return r.rows[0].n;
 }
 
+// код входа или платежа
 export async function getCode(purpose, email) {
   const r = await query("SELECT * FROM otp_code WHERE purpose = $1 AND email = $2", [purpose, email]);
   const row = r.rows[0];
@@ -727,6 +780,7 @@ export async function getCode(purpose, email) {
   return { code: row.code, exp: Number(row.expires_at), channel: row.channel, dest: row.destination, sentAt: Number(row.sent_at), purpose: row.purpose, bypass: row.bypass };
 }
 
+// записать код
 export async function saveCode(purpose, email, rec) {
   await query(
     `INSERT INTO otp_code (purpose, email, code, channel, destination, sent_at, expires_at, bypass)
@@ -738,10 +792,12 @@ export async function saveCode(purpose, email, rec) {
   );
 }
 
+// погасить код
 export async function deleteCode(purpose, email) {
   await query("DELETE FROM otp_code WHERE purpose = $1 AND email = $2", [purpose, email]);
 }
 
+// последний код, для карточки в админке
 export async function lastCodeFor(email) {
   const r = await query(
     "SELECT code FROM otp_code WHERE email = $1 AND expires_at >= $2 ORDER BY sent_at DESC LIMIT 1",
@@ -750,16 +806,19 @@ export async function lastCodeFor(email) {
   return r.rows[0]?.code;
 }
 
+// журнал
 export async function insertAudit(id, action, detail, at) {
   await query("INSERT INTO audit_log (id, action, created_at, detail) VALUES ($1, $2, $3, $4)", [id, action, at, JSON.stringify(detail || {})]);
   await query("DELETE FROM audit_log WHERE id IN (SELECT id FROM audit_log ORDER BY created_at DESC OFFSET 500)");
 }
 
+// последние записи журнала
 export async function recentAudit(limit = 30) {
   const r = await query("SELECT * FROM audit_log ORDER BY created_at DESC LIMIT $1", [limit]);
   return r.rows.map((row) => ({ id: row.id, action: row.action, at: Number(row.created_at), detail: row.detail || {} }));
 }
 
+// цифры на главной админки
 export async function overview() {
   const dayAgo = Date.now() - 86400000;
   const weekAgo = Date.now() - 7 * 86400000;
@@ -788,6 +847,7 @@ export async function overview() {
   };
 }
 
+// список клиентов
 export async function listUsersAdmin() {
   const r = await query(
     `SELECT u.*, w.balance,
@@ -802,21 +862,25 @@ export async function listUsersAdmin() {
   return r.rows.map((row) => ({ ...mapUser(row), balance: Number(row.balance || 0), txCount: row.tx_count }));
 }
 
+// выгрузка клиентов
 export async function exportUsers() {
   const rows = await listUsersAdmin();
   return rows;
 }
 
+// выгрузка операций
 export async function exportTxs() {
   const r = await query(`${txSql} ORDER BY t.created_at DESC`);
   return r.rows.map(mapTx);
 }
 
+// выгрузка журнала
 export async function exportAudit() {
   const r = await query("SELECT * FROM audit_log ORDER BY created_at DESC");
   return r.rows.map((row) => ({ id: row.id, action: row.action, at: Number(row.created_at), detail: row.detail || {} }));
 }
 
+// срез базы в том виде, в каком его ждёт модель
 export async function loadModelStore() {
   const users = await query(`${userSql} GROUP BY u.email`);
   const wallets = await query("SELECT * FROM wallet");
@@ -828,6 +892,7 @@ export async function loadModelStore() {
   return { users: userMap, wallets: walletMap, txs: txs.rows.map(mapTx) };
 }
 
+// настройки смс и почты
 export async function readNotify() {
   const r = await query("SELECT * FROM notify_settings WHERE id = 1");
   const row = r.rows[0];
@@ -845,6 +910,7 @@ export async function readNotify() {
   };
 }
 
+// сохранить настройки, пустой секрет не затирает старый
 export async function writeNotify(cfg) {
   await query(
     `INSERT INTO notify_settings (id, smsru_api_id, sms_from, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from, telegram_bot_token, telegram_bot_user)
@@ -857,6 +923,7 @@ export async function writeNotify(cfg) {
   );
 }
 
+// схема режется по ; чтобы выполнить по кускам
 function splitSql(sql) {
   const parts = [];
   let current = "";
@@ -909,6 +976,7 @@ function splitSql(sql) {
   return parts;
 }
 
+// старый data.json, если он ещё лежит рядом
 function readJson(file) {
   try {
     if (!fs.existsSync(file)) return null;
@@ -918,6 +986,7 @@ function readJson(file) {
   }
 }
 
+// один раз перелить json в postgres
 async function importJson(raw) {
   const users = Object.values(raw.users || {});
   for (const user of users) {
@@ -987,6 +1056,7 @@ async function importJson(raw) {
   }
 }
 
+// дата для демо-ленты
 function offset(days, hour, minute) {
   const d = new Date();
   d.setDate(d.getDate() - days);
@@ -994,6 +1064,7 @@ function offset(days, hour, minute) {
   return d.getTime();
 }
 
+// ivan@alfa.demo, если его ещё нет
 async function seedDemo() {
   const exists = await getUser("ivan@alfa.demo");
   if (exists) return;
@@ -1047,6 +1118,7 @@ async function seedDemo() {
   await insertNote({ id: "n3", email, title: "Вход в кошелёк", body: "Успешная авторизация с этого устройства", kind: "security", createdAt: offset(0, 8, 0), read: true });
 }
 
+// поднять схему, залить демо, импортнуть json если база пустая
 export async function initDb() {
   pool = new Pool({ connectionString: databaseUrl(), max: 10 });
   for (const statement of splitSql(SCHEMA)) await pool.query(statement);
@@ -1071,6 +1143,7 @@ export async function initDb() {
   }
 }
 
+// путь к notify.json, для старых установок
 export function notifyFileHint() {
   return readJson(NOTIFY_FILE);
 }

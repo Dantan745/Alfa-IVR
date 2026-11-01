@@ -1,3 +1,4 @@
+# Фронт собирается отдельно, в рантайме остаётся node и python: антифрод на sklearn.
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY web/package.json web/package-lock.json* web/

@@ -1,3 +1,4 @@
+// Коды. Смс через sms.ru, если не дошло — письмо. Телеграм остался для бота, в регистрацию его больше не ставим.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +13,7 @@ const DATA_DIR = process.env.DATA_DIR || __dirname;
 const FILE = path.join(DATA_DIR, "notify.json");
 const ENV_FILE = path.join(__dirname, ".env");
 
+// подхватить server/.env, если переменной ещё нет в окружении
 function loadDotEnv() {
   if (!fs.existsSync(ENV_FILE)) return;
   for (const line of fs.readFileSync(ENV_FILE, "utf8").split(/\r?\n/)) {
@@ -28,12 +30,14 @@ function loadDotEnv() {
 
 loadDotEnv();
 
+// пустое поле в админке не стирает уже записанный ключ
 function secretOrKeep(next, prev) {
   const s = next == null ? "" : String(next).trim();
   if (!s || s.includes("…") || s.includes("*")) return prev || "";
   return s;
 }
 
+// значение из базы, иначе из env
 function keep(val, fallback) {
   const s = val == null ? "" : String(val).trim();
   return s || fallback || "";
@@ -41,6 +45,7 @@ function keep(val, fallback) {
 
 let cache = null;
 
+// смс, почта и бот из env
 function fromEnv(file = {}) {
   return {
     smsruApiId: keep(file.smsruApiId, process.env.SMSRU_API_ID),
@@ -55,10 +60,12 @@ function fromEnv(file = {}) {
   };
 }
 
+// текущие настройки отправки
 export function loadNotify() {
   return cache || fromEnv();
 }
 
+// при старте забрать настройки из базы
 export async function hydrateNotify() {
   let file = {};
   try {
@@ -71,6 +78,7 @@ export async function hydrateNotify() {
   if (!row) await writeNotify(cache);
 }
 
+// админ сохранил настройки
 export async function saveNotify(patch) {
   const cur = loadNotify();
   const next = {
@@ -89,6 +97,7 @@ export async function saveNotify(patch) {
   return publicNotify(next);
 }
 
+// то же для формы, секреты замазаны
 export function publicNotify(cfg = loadNotify()) {
   return {
     sms: Boolean(cfg.smsruApiId),
@@ -104,15 +113,18 @@ export function publicNotify(cfg = loadNotify()) {
   };
 }
 
+// токен бота, если он задан
 function telegramToken(cfg = loadNotify()) {
   return cfg.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || "";
 }
 
+// ссылка на бота
 function botUrl(cfg = loadNotify()) {
   const user = (cfg.telegramBotUser || process.env.TELEGRAM_BOT_USERNAME || "").replace(/^@/, "");
   return user ? `https://t.me/${user}` : "";
 }
 
+// секрет вебхука телеграма совпал
 export function telegramHookOk(presented) {
   const token = telegramToken();
   if (!token || !presented) return false;
@@ -123,6 +135,7 @@ export function telegramHookOk(presented) {
   return crypto.timingSafeEqual(left, right);
 }
 
+// сообщение в чат бота
 async function sendTelegram(token, chatId, text, keyboard) {
   const body = { chat_id: chatId, text };
   if (keyboard) body.reply_markup = { keyboard, resize_keyboard: true, one_time_keyboard: true };
@@ -135,6 +148,7 @@ async function sendTelegram(token, chatId, text, keyboard) {
   if (!data.ok) throw new Error(data.description || "Telegram не принял сообщение");
 }
 
+// номер уже привязан к боту или ещё нет
 export async function phoneDeliveryPlan(phone) {
   const cfg = loadNotify();
   const token = telegramToken(cfg);
@@ -144,6 +158,7 @@ export async function phoneDeliveryPlan(phone) {
   return { mode: "link", botUrl: botUrl(cfg) };
 }
 
+// человек нажал «поделиться номером»
 export async function handleTelegramUpdate(update) {
   const message = update?.message;
   const token = telegramToken();
@@ -170,6 +185,7 @@ export async function handleTelegramUpdate(update) {
 let telegramPolling = false;
 let telegramOffset = 0;
 
+// в проде вебхук, локально — long poll
 export function startTelegramInbox() {
   const token = telegramToken();
   if (!token) {
@@ -187,6 +203,7 @@ export function startTelegramInbox() {
     .finally(() => pollTelegram());
 }
 
+// забрать апдейты бота, пока нет вебхука
 async function pollTelegram() {
   if (!telegramPolling) return;
   const token = telegramToken();
@@ -212,6 +229,7 @@ async function pollTelegram() {
   setTimeout(pollTelegram, 1000);
 }
 
+// сказать телеграму, куда слать апдейты
 export async function ensureTelegramWebhook() {
   const token = telegramToken();
   if (!token || process.env.NODE_ENV !== "production") return;
@@ -241,6 +259,7 @@ export async function ensureTelegramWebhook() {
   else console.log("Telegram webhook установлен");
 }
 
+// телефон в подсказке, середина закрыта
 export function maskPhone(p) {
   const d = String(p || "").replace(/\D/g, "");
   if (d.length < 10) return "телефон";
@@ -248,16 +267,19 @@ export function maskPhone(p) {
   return `+7 (${n.slice(1, 4)}) ***-**-${n.slice(-2)}`;
 }
 
+// почта в подсказке
 export function maskEmail(e) {
   const [u, d] = String(e || "").split("@");
   if (!d) return "почту";
   return `${u.slice(0, 2)}***@${d}`;
 }
 
+// номер в вид, который ждёт sms.ru
 function ruPhone(p) {
   return ruMobileDigits(p);
 }
 
+// ошибка почты по-русски
 function ruSmtpError(err) {
   const m = String(err && err.message ? err.message : err || "");
   const low = m.toLowerCase();
@@ -276,6 +298,7 @@ function ruSmtpError(err) {
   return "Не удалось отправить письмо. " + (m ? "Подробности: " + m : "Проверьте SMTP в /admin.");
 }
 
+// ошибка sms.ru по-русски: баланс, отправитель, номер
 function ruSmsError(err) {
   const m = String(err && err.message ? err.message : err || "");
   const low = m.toLowerCase();
@@ -288,6 +311,7 @@ function ruSmsError(err) {
   return m || "СМС не отправлено. Проверьте ключ SMS.ru.";
 }
 
+// смс через sms.ru
 async function sendSms(apiId, phone, text, from) {
   const to = ruPhone(phone);
   const url = new URL("https://sms.ru/sms/send");
@@ -303,6 +327,7 @@ async function sendSms(apiId, phone, text, from) {
   throw new Error(ruSmsError(item?.status_text || data.status_text || "СМС не отправлено. Проверьте ключ SMS.ru."));
 }
 
+// письмо по smtp
 async function sendMail(cfg, to, subject, text) {
   const pass = String(cfg.smtpPass || "").replace(/\s/g, "");
   const ports = Number(cfg.smtpPort) === 587 ? [587, 465] : [465, 587];
@@ -338,6 +363,7 @@ const PURPOSE = {
   reset: "восстановления пароля",
 };
 
+// код на почту, если smtp заполнен
 async function tryEmail(cfg, email, code, text) {
   if (!cfg.smtpUser || !cfg.smtpPass) {
     throw new Error("Почта для кодов не настроена. Откройте /admin и укажите SMTP (Mail.ru / Яндекс / Gmail).");
@@ -347,6 +373,7 @@ async function tryEmail(cfg, email, code, text) {
   return { via: "email", masked: maskEmail(email) };
 }
 
+// код на смс. если смс не ушло и почта настроена — дублируем письмом
 export async function deliver({ channel, phone, email, code, purpose }) {
   const cfg = loadNotify();
   const label = PURPOSE[purpose] || "подтверждения";
@@ -355,21 +382,6 @@ export async function deliver({ channel, phone, email, code, purpose }) {
 
   if (channel === "email") {
     return tryEmail(cfg, email, code, mailText);
-  }
-
-  if (channel === "telegram") {
-    const token = telegramToken(cfg);
-    if (!token) throw new Error("Telegram-бот не подключён. Выберите SMS или почту.");
-    if (!phone) throw new Error("Нет номера телефона для Telegram.");
-    const chatId = await getTelegramChat(phone);
-    if (!chatId) {
-      const err = new Error("Сначала откройте бота и нажмите «Поделиться номером», затем запросите код ещё раз.");
-      err.needLink = true;
-      err.botUrl = botUrl(cfg);
-      throw err;
-    }
-    await sendTelegram(token, chatId, mailText);
-    return { via: "telegram", masked: maskPhone(phone) };
   }
 
   let smsErr = "";

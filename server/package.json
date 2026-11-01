@@ -1,5 +1,6 @@
 {
   "name": "alfa-cr-server",
+  "description": "API кошелька",
   "private": true,
   "type": "module",
   "scripts": {
