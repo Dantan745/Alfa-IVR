@@ -1,3 +1,4 @@
+// пин, скрытый баланс и отпечаток этого устройства. отпечаток не уезжает на сервер
 import { useState } from "react";
 import { useWallet } from "../wallet";
 import { validatePin } from "../validate";
@@ -72,7 +73,7 @@ export default function SecurityPage({ onBack }: { onBack: () => void }) {
         </div>
         <div className="rounded-[20px] px-4 py-4 mb-3" style={{ background: "var(--card)" }}>
           <p className="text-[var(--ink)] text-[15px] font-medium mb-1">PIN-код</p>
-          <p className="text-[var(--muted-50)] text-[12px] mb-3">{wallet?.pinSet ? "PIN уже задан. Новый код заменит его, старый на экран не выводится." : "4 цифры для разблокировки приложения. На сервере хранится только хеш."}</p>
+          <p className="text-[var(--muted-50)] text-[12px] mb-3">{wallet?.pinSet ? "После входа по почте приложение спросит эти 4 цифры. Новый код заменит старый, сам PIN на экран не выводится." : "4 цифры после входа по почте. Пока не зададите свой, у нового счёта код 1234. На сервере хранится только хеш."}</p>
           <input
             value={pin}
             onChange={(e) => { setPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setErr(""); }}
@@ -120,10 +121,10 @@ function Toggle({ title, hint, on, onChange }: { title: string; hint: string; on
       </div>
       <div
         className="w-11 h-6 rounded-full relative transition-colors"
-        style={{ background: on ? "var(--accent)" : "rgba(255,255,255,0.12)" }}
+        style={{ background: on ? "var(--accent)" : "var(--switch-off)" }}
       >
         <div
-          className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform"
+          className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform shadow-[0_0_0_1px_rgba(16,24,28,0.25)]"
           style={{ transform: on ? "translateX(22px)" : "translateX(2px)" }}
         />
       </div>

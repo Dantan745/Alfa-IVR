@@ -1,3 +1,4 @@
+// пачка переводов из csv или руками. один код на всю пачку, строки шлём одним запросом
 import { useMemo, useRef, useState } from "react";
 import { useWallet } from "../wallet";
 import { editPhoneMask, isOwnPayee, maskPhone, validatePhone } from "../validate";
@@ -10,6 +11,7 @@ interface BulkPaymentsProps {
 type Status = "pending" | "success" | "error";
 type Row = { id: string; phone: string; name: string; amount: string; status: Status; error?: string };
 
+// первая строка может быть шапкой. разделитель запятая или точка с запятой, excel так и сохраняет
 function parseCsv(text: string): { phone: string; name: string; amount: string }[] {
   const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const out: { phone: string; name: string; amount: string }[] = [];

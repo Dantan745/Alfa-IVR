@@ -1,3 +1,4 @@
+// совет по тратам и переписка к нему. текст пишет сервер, на перевод это не влияет
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 

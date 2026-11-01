@@ -1,3 +1,4 @@
+// перевод. получатель, сумма, себе не даём, от 10 тысяч поднимаем шторку с кодом
 import { useEffect, useState } from "react";
 import { formatRub, useWallet } from "../wallet";
 import { editPhoneMask, isOwnPayee } from "../validate";
@@ -57,6 +58,7 @@ function PrimaryBtn({ label, onClick, disabled }: { label: string; onClick: () =
   );
 }
 
+// если пришли из адресной книги, телефон уже подставлен
 export default function TransferPage({ onBack, onNavigate }: TransferPageProps) {
   const { wallet, transfer, contacts, pendingPayee, setPendingPayee, requestCode, user } = useWallet();
   const balance = wallet?.balance ?? 0;

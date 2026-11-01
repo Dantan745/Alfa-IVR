@@ -1,3 +1,4 @@
+// пополнение. пресеты чтобы не вбивать мелочь, потолок всё равно режет сервер
 import { useState } from "react";
 import { formatRub, useWallet } from "../wallet";
 

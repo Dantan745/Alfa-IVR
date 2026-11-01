@@ -1,8 +1,11 @@
+// какие экраны открыты. вкладки внизу, поверх них перевод, qr и остальное. деньги считает сервер
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { clearPayLink, readPayLink, type QrBill } from "./qr";
 import { backNav, ensureRoot, pushNav, type NavSnap } from "./navHistory";
 import { bioPassed, deviceBioOn, markBioPassed } from "./bio";
+import { pinPassed, markPinPassed } from "./pin";
 import BioGate from "./components/BioGate";
+import PinGate from "./components/PinGate";
 import AuthPage from "./pages/AuthPage";
 import HomePage from "./pages/HomePage";
 import PaymentsPage from "./pages/PaymentsPage";
@@ -29,6 +32,7 @@ type SubPage =
   | "transfer" | "qr" | "limits" | "address"
   | "bulk" | "smart" | "topup" | "tx" | "notifications" | "security" | "support" | "discuss" | null;
 
+// рамка телефона на широком окне. на узком это просто весь экран
 function Frame({ children }: { children: ReactNode }) {
   return (
     <div className="app-stage">
@@ -38,23 +42,31 @@ function Frame({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
+  // админка отдельно, без нижнего меню кошелька
   const isAdmin = typeof window !== "undefined" && window.location.pathname.startsWith("/admin");
-  const { ready, authed, toast, logout } = useWallet();
+  const { ready, authed, toast, logout, wallet } = useWallet();
   if (isAdmin) return <AdminPage />;
   const [tab, setTab] = useState<Tab>("home");
   const [sub, setSub] = useState<SubPage>(null);
   const [txId, setTxId] = useState<string | null>(null);
   const [payLink, setPayLink] = useState<QrBill | null>(() => readPayLink());
   const [unlocked, setUnlocked] = useState(false);
+  const [pinOk, setPinOk] = useState(false);
   const place = useRef({ tab, sub });
   place.current = { tab, sub };
   const qrPushed = useRef(false);
 
   useEffect(() => {
     if (authed && bioPassed()) setUnlocked(true);
-  }, [authed]);
+    if (authed && pinPassed()) setPinOk(true);
+    if (!authed) {
+      setUnlocked(false);
+      setPinOk(false);
+    }
+  }, [authed, wallet?.pinSet]);
 
   useEffect(() => {
+    // назад в браузере и кнопка android. со вложенного экрана сначала на вкладку, с вкладки на главную
     ensureRoot();
     const onPop = (e: PopStateEvent) => {
       const s = e.state as NavSnap | null;
@@ -117,6 +129,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // ссылку из чужого qr открываем оплатой один раз, не на каждый рендер
     if (authed && payLink && !qrPushed.current) {
       qrPushed.current = true;
       setSub("qr");
@@ -124,6 +137,7 @@ export default function App() {
     }
   }, [authed, payLink]);
 
+  // вкладка сменяет низ, вложенный экран ложится поверх и попадает в историю
   function navigate(page: string, extra?: string) {
     const subs: SubPage[] = ["transfer", "qr", "limits", "address", "bulk", "smart", "topup", "tx", "notifications", "security", "support", "discuss"];
     const tabs: Tab[] = ["home", "payments", "history", "profile"];
@@ -175,6 +189,16 @@ export default function App() {
     );
   }
 
+  // PIN после почты, если он задан. почту и пароль не заменяет
+  if (wallet?.pinSet && !pinOk && !pinPassed()) {
+    return (
+      <Frame>
+        <PinGate onPassed={() => { markPinPassed(); setPinOk(true); }} />
+      </Frame>
+    );
+  }
+
+  // отпечаток только если человек сам включил его на этом устройстве
   if (deviceBioOn() && !unlocked) {
     return (
       <Frame>

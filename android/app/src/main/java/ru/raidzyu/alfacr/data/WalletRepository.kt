@@ -61,7 +61,9 @@ class WalletRepository(
                 return Result.success(applyRemote(snap))
             }
             remoteResult.onFailure { err ->
-                if (err.message?.contains("REMOTE_DISABLED") != true) return Result.failure(err)
+                val msg = err.message.orEmpty()
+                val offline = msg.contains("REMOTE_DISABLED") || msg.contains("Нет связи")
+                if (!offline) return Result.failure(err)
             }
         }
         val user = db.users().byEmail(email.trim().lowercase())

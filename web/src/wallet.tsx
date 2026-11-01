@@ -1,7 +1,9 @@
+// состояние кошелька для всех экранов. цифры приходят с сервера, тут их только держим и показываем
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, getToken, setToken, type Snapshot } from "./api";
 import { clearAdviceStorage } from "./adviceStore";
 import { clearBioPassed, markBioPassed } from "./bio";
+import { clearPinPassed, markPinPassed } from "./pin";
 import { playDenied, playPaid, unlockSound } from "./sounds";
 import type { DbContact, DbNote, DbTx, DbUser, DbWallet } from "./db";
 
@@ -10,10 +12,12 @@ export type Note = DbNote;
 export type Contact = DbContact;
 export type WalletUser = Omit<DbUser, "passwordHash">;
 
+// всегда две копейки, иначе 10 и 10,5 выглядят как разные валюты
 export function formatRub(n: number) {
   return n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// в ленте «сегодня / вчера», на карточке операции уже полная дата
 export function formatTxDate(ts: number) {
   const d = new Date(ts);
   const now = new Date();
@@ -46,6 +50,7 @@ export function formatHomeDate(d = new Date()) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// модель отдаёт и долю, и уже проценты. на полоску нужно 0–100
 export function riskPercent(score?: number) {
   const n = Number(score) || 0;
   const pct = n > 1.5 ? n : n * 100;
@@ -59,6 +64,7 @@ export function txStatusLabel(status?: string) {
   return "Исполнена";
 }
 
+// самое свежее непрочитанное предупреждение, для плашки на главной
 export function latestUnreadAnomaly(notes: Note[]) {
   return [...notes]
     .filter((n) => n.kind === "anomaly" && !n.read)
@@ -101,6 +107,9 @@ type WalletCtx = {
   removeContact: (id: string) => Promise<void>;
   bulkPay: (rows: { name: string; phone: string; amount: number }[], code?: string) => Promise<{ ok: number; fail: number; error?: string }>;
   updateSecurity: (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "email" }) => Promise<void>;
+  createSavings: (name: string) => Promise<string | null>;
+  moveSavings: (id: string, direction: "in" | "out", amount: number) => Promise<string | null>;
+  removeSavings: (id: string) => Promise<string | null>;
   updateLimits: (patch: Record<string, number>) => Promise<string | null>;
   addSupportNote: (text: string) => Promise<void>;
   setToast: (t: string) => void;
@@ -125,15 +134,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const knownTx = useRef<Set<string>>(new Set());
   const seenOnce = useRef(false);
 
+  // ответ сервера целиком. новые операции коротко мигают, звук только если это не первый заход
   const apply = useCallback((snap: Snapshot, opts: { quiet?: boolean } = {}) => {
-    const nextIds = (snap.txs || []).map((t) => t.id);
+    if (!snap?.user || !snap.wallet || !Array.isArray(snap.txs)) return;
+    const nextIds = snap.txs.map((t) => t.id);
     const fresh = nextIds.filter((id) => !knownTx.current.has(id));
     knownTx.current = new Set(nextIds);
     setUser(snap.user);
     setWallet(snap.wallet);
     setTxs(snap.txs);
-    setNotes(snap.notes);
-    setContacts(snap.contacts);
+    setNotes(Array.isArray(snap.notes) ? snap.notes : []);
+    setContacts(Array.isArray(snap.contacts) ? snap.contacts : []);
     setForecast(snap.forecast || null);
     setAuthed(true);
     if (fresh.length) {
@@ -153,6 +164,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const fail = useCallback((e: unknown) => (e instanceof Error ? e.message : "Ошибка сервера"), []);
 
+  // открытие: сервер жив и токен ещё годится — тогда сразу кошелёк, иначе на вход
   useEffect(() => {
     (async () => {
       try {
@@ -166,6 +178,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     })();
   }, [apply]);
 
+  // браузер не даёт звук, пока человек сам не ткнет в экран
   useEffect(() => {
     const unlock = () => unlockSound();
     window.addEventListener("pointerdown", unlock);
@@ -178,6 +191,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(id);
   }, [toast]);
 
+  // пока вкладка открыта, раз в несколько секунд сверяем ленту. чужой перевод иначе не всплывёт
   useEffect(() => {
     if (!authed) return;
     let stop = false;
@@ -231,6 +245,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [apply, fail]);
 
+  // совет прошлого человека на этом устройстве стираем, а то смешаются два счёта
   const login = useCallback(async (email: string, password: string, code?: string) => {
     try {
       clearAdviceStorage();
@@ -263,9 +278,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [apply, fail]);
 
+  // выход чистит и сессию, и «уже проходил отпечаток» на этом телефоне
   const logout = useCallback(() => {
     clearAdviceStorage();
     clearBioPassed();
+    clearPinPassed();
     void api.logout();
     setAuthed(false);
     setUser(null);
@@ -279,6 +296,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     seenOnce.current = false;
   }, []);
 
+  // null — ушло. строка — отказ сервера, баланс не трогаем и звук другой
   const transfer = useCallback(async (payee: string, amount: number, comment?: string, code?: string) => {
     try {
       apply(await api.transfer(payee, amount, comment, code), { quiet: true });
@@ -312,6 +330,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [apply, fail]);
 
+  // на старом вебе clipboard нет, тогда через невидимое поле
   const copyWalletId = useCallback(async () => {
     const id = user?.walletId || "";
     try {
@@ -384,10 +403,42 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const updateSecurity = useCallback(async (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "email" }) => {
     try {
-      apply(await api.updateSecurity(patch), { quiet: true });
+      const snap = await api.updateSecurity(patch);
+      if (patch.pin) markPinPassed();
+      apply(snap, { quiet: true });
       setToast("Настройки сохранены");
     } catch (e) {
       setToast(fail(e));
+    }
+  }, [apply, fail]);
+
+  const createSavings = useCallback(async (name: string) => {
+    try {
+      apply(await api.createSavings(name), { quiet: true });
+      setToast("Копилка создана");
+      return null;
+    } catch (e) {
+      return fail(e);
+    }
+  }, [apply, fail]);
+
+  const moveSavings = useCallback(async (id: string, direction: "in" | "out", amount: number) => {
+    try {
+      apply(await api.moveSavings(id, direction, amount), { quiet: true });
+      setToast(direction === "in" ? "Деньги в копилке" : "Деньги вернулись на счёт");
+      return null;
+    } catch (e) {
+      return fail(e);
+    }
+  }, [apply, fail]);
+
+  const removeSavings = useCallback(async (id: string) => {
+    try {
+      apply(await api.removeSavings(id), { quiet: true });
+      setToast("Копилка удалена");
+      return null;
+    } catch (e) {
+      return fail(e);
     }
   }, [apply, fail]);
 
@@ -405,14 +456,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, setPendingPayee, flashIds, forecast,
       login, requestCode, forgotPassword, resetPassword, register, logout, transfer, topUp, qrPay,
       copyWalletId, markNotesRead, markNoteRead, addContact, toggleFav, removeContact, bulkPay,
-      updateSecurity, updateLimits, addSupportNote, setToast,
+      updateSecurity, updateLimits, addSupportNote, createSavings, moveSavings, removeSavings, setToast,
     }),
-    [ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, flashIds, forecast, login, requestCode, forgotPassword, resetPassword, register, logout, transfer, topUp, qrPay, copyWalletId, markNotesRead, markNoteRead, addContact, toggleFav, removeContact, bulkPay, updateSecurity, updateLimits, addSupportNote],
+    [ready, authed, toast, user, wallet, txs, notes, contacts, pendingPayee, flashIds, forecast, login, requestCode, forgotPassword, resetPassword, register, logout, transfer, topUp, qrPay, copyWalletId, markNotesRead, markNoteRead, addContact, toggleFav, removeContact, bulkPay, updateSecurity, updateLimits, addSupportNote, createSavings, moveSavings, removeSavings],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
+// экран вне провайдера падать должен сразу, а не молча с пустым балансом
 export function useWallet() {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("WalletProvider missing");

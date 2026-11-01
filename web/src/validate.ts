@@ -1,3 +1,4 @@
+// проверки полей до отправки. сервер всё равно перепроверит, тут чтобы человек увидел ошибку сразу
 const CYRILLIC_NAME = /^[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?$/;
 const EMAIL = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const PASSWORD = /^\S{8,64}$/;
@@ -10,6 +11,7 @@ export function digits(s: string) {
   return s.replace(/\D/g, "");
 }
 
+// 8, +7 и просто 9 приводим к 79..., иначе один номер выглядит как три разных
 export function ruMobileDigits(raw: string) {
   let d = digits(raw);
   if (!d) return "";
@@ -22,6 +24,7 @@ export function isRuMobile(raw: string) {
   return /^79\d{9}$/.test(ruMobileDigits(raw));
 }
 
+// маска +7 (999) 000-00-00. в поле храним уже с пробелами, на сервер уйдут цифры
 export function maskPhone(raw: string) {
   let d = ruMobileDigits(raw);
   if (!d) return "";
@@ -38,7 +41,7 @@ export function maskPhone(raw: string) {
   return out;
 }
 
-/** Маска, которая даёт стереть скобку/дефис: стирается последняя цифра. */
+// backspace по скобке или дефису должен съесть цифру, а не застрять на знаке
 export function editPhoneMask(prev: string, next: string) {
   const pd = ruMobileDigits(prev);
   const nd = ruMobileDigits(next);
@@ -100,6 +103,7 @@ export function validatePassport(value: string) {
   return "";
 }
 
+// не любая дата: паспорт рф с 1997 и не старше примерно 30 лет, иначе это просрочка
 export function validateIssueDate(value: string) {
   if (!/^\d{2}\.\d{2}\.\d{4}$/.test(value)) return "Дата выдачи: ДД.ММ.ГГГГ";
   const [dd, mm, yyyy] = value.split(".").map(Number);
@@ -128,6 +132,7 @@ export function validatePin(value: string) {
   return "";
 }
 
+// перевод себе ловим до запроса: почта, номер кошелька или те же 10 цифр телефона
 export function isOwnPayee(
   user: { email?: string; phone?: string; walletId?: string } | null | undefined,
   query: string,

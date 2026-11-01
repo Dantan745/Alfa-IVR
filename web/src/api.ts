@@ -1,3 +1,4 @@
+// все запросы к серверу. экран деньги не проводит, только шлёт и показывает ответ
 import type { DbContact, DbNote, DbTx, DbUser, DbWallet } from "./db";
 
 export type Snapshot = {
@@ -15,6 +16,7 @@ export type Snapshot = {
 const TOKEN_KEY = "alfa-cr-token";
 const DEVICE_KEY = "alfa-device-id";
 
+// один id браузера. сервер по нему видит, что зашли с нового устройства
 export function getDeviceId() {
   let id = localStorage.getItem(DEVICE_KEY) || "";
   if (!id) {
@@ -24,6 +26,7 @@ export function getDeviceId() {
   return id;
 }
 
+// сессия после входа. без неё сервер счёт не отдаёт
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY) || "";
 }
@@ -33,11 +36,13 @@ export function setToken(token: string | null) {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+// пустой адрес — тот же хост и прокси vite. иначе бьём прямо в сервер
 function apiUrl(path: string) {
   const origin = String(import.meta.env.VITE_API_ORIGIN || "").replace(/\/$/, "");
   return origin ? origin + path : path;
 }
 
+// токен и устройство на каждый запрос. текст ошибки берём как прислал сервер
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
@@ -57,11 +62,13 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+// после входа и регистрации токен надо оставить, иначе следующий запрос анонимный
 function remember(snap: Snapshot) {
   if (snap.token) setToken(snap.token);
   return snap;
 }
 
+// имена как у ручек. снимок после платежа — это уже новый баланс и лента
 export const api = {
   health: () => req<{ ok: boolean }>("/api/health"),
   requestCode: (body: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number; bulk?: boolean }) =>
@@ -94,6 +101,11 @@ export const api = {
     req<Snapshot>("/api/notes/" + encodeURIComponent(id) + "/read", { method: "POST" }),
   updateSecurity: (patch: Partial<Pick<DbWallet, "biometric" | "pin" | "hideBalance">> & { otpChannel?: "sms" | "email" }) =>
     req<Snapshot>("/api/security", { method: "PATCH", body: JSON.stringify(patch) }),
+  checkPin: (pin: string) => req<{ ok: boolean }>("/api/pin/check", { method: "POST", body: JSON.stringify({ pin }) }),
+  createSavings: (name: string) => req<Snapshot>("/api/savings", { method: "POST", body: JSON.stringify({ name }) }),
+  moveSavings: (id: string, direction: "in" | "out", amount: number) =>
+    req<Snapshot>("/api/savings/" + encodeURIComponent(id) + "/" + direction, { method: "POST", body: JSON.stringify({ amount }) }),
+  removeSavings: (id: string) => req<Snapshot>("/api/savings/" + encodeURIComponent(id), { method: "DELETE" }),
   updateLimits: (patch: Record<string, number>) =>
     req<Snapshot>("/api/limits", { method: "PATCH", body: JSON.stringify(patch) }),
   addSupportNote: (text: string) =>

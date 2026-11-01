@@ -1,3 +1,4 @@
+// сюда всё цепляется: сначала тема, потом кошелёк, потом экраны
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'

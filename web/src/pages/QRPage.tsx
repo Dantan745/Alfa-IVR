@@ -1,3 +1,4 @@
+// показать свой qr или снять чужой. оплата уходит на /api/qr, проверки те же, что у перевода
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import jsQR from "jsqr";
@@ -12,6 +13,7 @@ interface QRPageProps {
 
 type Detector = { detect: (source: CanvasImageSource) => Promise<{ rawValue?: string }[]> };
 
+// живая камера через BarcodeDetector, где браузер умеет. иначе человек грузит фото и его читает jsqr
 function detectorOf(): Detector | null {
   const Ctor = (window as unknown as { BarcodeDetector?: new (opts: { formats: string[] }) => Detector }).BarcodeDetector;
   if (!Ctor) return null;

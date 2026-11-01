@@ -1,3 +1,4 @@
+// одна операция из ленты. повтор уводит на перевод, сумму сам не копирует
 import { formatFullDate, formatRub, formatTxDate, txStatusLabel, useWallet } from "../wallet";
 
 export default function TxDetailPage({ txId, onBack, onRepeat }: { txId: string; onBack: () => void; onRepeat: () => void }) {

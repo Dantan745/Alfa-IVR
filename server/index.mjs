@@ -1021,7 +1021,7 @@ const server = http.createServer(async (req, res) => {
           balance: 0,
           savings: [],
           biometric: false,
-          pin: "1234",
+          pin: await hashPassword("1234"),
           hideBalance: false,
           limits: defaultLimits(),
         });
@@ -1614,6 +1614,68 @@ const server = http.createServer(async (req, res) => {
           alertAbroad: Math.min(100, Math.max(1, num(b.alertAbroad, cur.alertAbroad))),
         };
         await db.saveWallet(w);
+        send(res, 200, await snapshot(email));
+        return;
+      }
+
+      if (req.method === "POST" && p === "/api/pin/check") {
+        const bucket = "pin:" + email;
+        if (rateOver(bucket, 8)) return send(res, 429, { error: "Слишком много попыток. Подождите несколько минут." });
+        const b = await readBody(req);
+        const pin = String(b.pin || "");
+        const w = await db.getWallet(email);
+        if (!w?.pin) return send(res, 400, { error: "PIN не задан" });
+        if (!/^\d{4}$/.test(pin)) return send(res, 400, { error: "PIN — 4 цифры" });
+        let ok = false;
+        if (isScryptHash(w.pin) || String(w.pin).startsWith("sha256$") || /^[a-f0-9]{64}$/i.test(String(w.pin))) {
+          ok = await verifyPassword(pin, w.pin);
+        } else if (String(w.pin) === pin) {
+          ok = true;
+          w.pin = await hashPassword(pin);
+          await db.saveWallet(w);
+        }
+        if (!ok) {
+          tooMany(bucket, 8, 10 * 60 * 1000);
+          return send(res, 400, { error: "Неверный PIN" });
+        }
+        send(res, 200, { ok: true });
+        return;
+      }
+
+      if (req.method === "POST" && p === "/api/savings") {
+        const b = await readBody(req);
+        try {
+          await db.createSavings(email, b.name);
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+        await addNote(email, "Копилка", `Создана «${String(b.name || "").trim().slice(0, 32)}»`, "system");
+        send(res, 200, await snapshot(email));
+        return;
+      }
+
+      const savingsMove = p.match(/^\/api\/savings\/([^/]+)\/(in|out)$/);
+      if (req.method === "POST" && savingsMove) {
+        const id = decodeURIComponent(savingsMove[1]);
+        const b = await readBody(req);
+        try {
+          const moved = await db.shiftSavings(email, id, savingsMove[2], Number(b.amount));
+          const verb = moved.direction === "in" ? "Положили" : "Забрали";
+          await addNote(email, "Копилка", `${verb} ${moved.amount.toLocaleString("ru-RU")} ₽ · ${moved.name}`, "system");
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+        send(res, 200, await snapshot(email));
+        return;
+      }
+
+      const savingsDrop = p.match(/^\/api\/savings\/([^/]+)$/);
+      if (req.method === "DELETE" && savingsDrop) {
+        try {
+          await db.removeSavings(email, decodeURIComponent(savingsDrop[1]));
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
         send(res, 200, await snapshot(email));
         return;
       }

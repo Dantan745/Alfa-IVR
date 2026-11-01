@@ -1,8 +1,10 @@
+// тёмная, светлая или как в системе. класс на html, экраны краски не считают
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 export type ThemeChoice = "dark" | "light" | "system";
 export const THEME_KEY = "alfa-theme";
 
+// что человек выбрал в прошлый раз. в приватном режиме просто тёмная
 export function readThemeChoice(): ThemeChoice {
   try {
     const v = localStorage.getItem(THEME_KEY);
@@ -13,6 +15,7 @@ export function readThemeChoice(): ThemeChoice {
   return "dark";
 }
 
+// «как в системе» надо разложить в конкретную, css ждёт dark или light
 export function resolvedTheme(choice: ThemeChoice): "dark" | "light" {
   if (choice === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: light)").matches) {
     return "light";
@@ -20,6 +23,7 @@ export function resolvedTheme(choice: ThemeChoice): "dark" | "light" {
   return choice === "light" ? "light" : "dark";
 }
 
+// красим страницу и полоску браузера на телефоне, выбор запоминаем
 export function applyTheme(choice: ThemeChoice) {
   const mode = resolvedTheme(choice);
   const root = document.documentElement;
@@ -40,6 +44,7 @@ type ThemeApi = { choice: ThemeChoice; setChoice: (c: ThemeChoice) => void };
 
 const ThemeCtx = createContext<ThemeApi>({ choice: "dark", setChoice: () => {} });
 
+// если выбрана система, слушаем её и перекрашиваем без перезагрузки
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [choice, setChoice] = useState<ThemeChoice>(() => readThemeChoice());
   useEffect(() => {

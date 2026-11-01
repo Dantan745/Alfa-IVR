@@ -1,9 +1,11 @@
+// qr у нас ссылка на оплату. ещё читаем старый банковский текст, если его навели камерой
 export type QrBill = {
   title: string;
   payee: string;
   amount: number | null;
 };
 
+// с телефона localhost не откроется, поэтому локально тоже кладём боевой адрес
 function payOrigin() {
   const fromEnv = String(import.meta.env.VITE_API_ORIGIN || "").replace(/\/$/, "");
   if (fromEnv) return fromEnv;
@@ -11,9 +13,10 @@ function payOrigin() {
     const host = location.hostname;
     if (host !== "localhost" && host !== "127.0.0.1") return location.origin;
   }
-  return "https://alfa-koshelek-cr.fly.dev";
+  return "https://alfapaycr.app";
 }
 
+// свой код: /pay, номер кошелька, сумма и имя. переносы в имени ломают картинку
 export function encodeAlfaQr(opts: { walletId: string; title: string; amount?: number }) {
   const amount = opts.amount && opts.amount > 0 ? String(Math.round(opts.amount * 100) / 100) : "";
   const title = opts.title.replace(/[\n\r]/g, " ").slice(0, 80);
@@ -24,6 +27,7 @@ export function encodeAlfaQr(opts: { walletId: string; title: string; amount?: n
   return url.toString();
 }
 
+// открыли ссылку из чужого qr — это входящий счёт, не обычный заход на сайт
 export function readPayLink(href?: string): QrBill | null {
   const raw = href || (typeof location !== "undefined" ? location.href : "");
   try {
@@ -35,6 +39,7 @@ export function readPayLink(href?: string): QrBill | null {
   }
 }
 
+// после оплаты убираем /pay, иначе «назад» снова откроет тот же счёт
 export function clearPayLink() {
   if (typeof history === "undefined" || typeof location === "undefined") return;
   if (location.pathname.replace(/\/+$/, "") === "/pay") history.replaceState(null, "", "/");
@@ -45,6 +50,7 @@ function money(raw: string) {
   return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
 }
 
+// три вида строки: наша ALFACR1, гост ST0001 (сумма в копейках) и обычный url
 export function parseQr(raw: string): QrBill | null {
   const text = String(raw || "").trim();
   if (!text) return null;

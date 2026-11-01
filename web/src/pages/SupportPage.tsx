@@ -1,3 +1,4 @@
+// короткие ответы и текст в поддержку. обращение ложится заметкой на сервере, отдельной почты нет
 import { useState } from "react";
 import { useWallet } from "../wallet";
 

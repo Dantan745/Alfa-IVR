@@ -1,3 +1,4 @@
+// получатели. из карточки можно сразу открыть перевод, телефон уедет в поле
 import { useState, type ReactNode } from "react";
 import { useWallet } from "../wallet";
 import { editPhoneMask, validatePhone } from "../validate";

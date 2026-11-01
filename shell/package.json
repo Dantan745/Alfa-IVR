@@ -9,16 +9,13 @@
     "sync:web": "node scripts/sync-www.mjs",
     "cap:sync": "npm run build:web && npm run sync:web && cap sync",
     "build:win": "npm run build:web && npm run sync:web && electron-builder --win nsis",
-    "build:mac": "npm run build:web && npm run sync:web && electron-builder --mac dmg",
-    "build:android": "npm run cap:sync && cd android && gradlew.bat assembleDebug",
-    "open:ios": "cap open ios"
+    "build:android": "npm run cap:sync && cd android && gradlew.bat assembleDebug"
   },
   "dependencies": {
     "@aparajita/capacitor-biometric-auth": "^9.0.0",
     "@capacitor/android": "^7.4.3",
     "@capacitor/app": "^7.1.2",
-    "@capacitor/core": "^7.4.3",
-    "@capacitor/ios": "^7.4.3"
+    "@capacitor/core": "^7.4.3"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.3",
@@ -37,6 +34,12 @@
       "electron/**/*",
       "www/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/icon.png",
+        "to": "icon.png"
+      }
     ],
     "asar": false,
     "win": {

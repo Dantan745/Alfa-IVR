@@ -1,5 +1,6 @@
 {
   "name": "alfa-koshelek-web",
+  "description": "Сайт кошелька. dev и preview — vite, сборка в dist, её отдаёт сервер.",
   "private": true,
   "version": "1.0.0",
   "type": "module",

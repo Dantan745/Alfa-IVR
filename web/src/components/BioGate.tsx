@@ -1,3 +1,4 @@
+// заслон после входа. свой отпечаток устройства, отдельную базу лиц не собираем
 import { useEffect, useState } from "react";
 import { scanBiometry } from "../bio";
 import CrMark from "./CrMark";
@@ -6,6 +7,7 @@ export default function BioGate({ onPassed, onPassword }: { onPassed: () => void
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // при открытии сразу спрашиваем, кнопку оставляем если человек смахнул системное окно
   async function run() {
     setBusy(true);
     setErr("");

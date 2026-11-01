@@ -1,3 +1,4 @@
+// профиль: меню в остальные экраны, тема и выход
 import { useState } from "react";
 import { useWallet } from "../wallet";
 import { useTheme, type ThemeChoice } from "../theme";

@@ -7,8 +7,5 @@
   },
   "android": {
     "allowMixedContent": false
-  },
-  "ios": {
-    "contentInset": "automatic"
   }
 }

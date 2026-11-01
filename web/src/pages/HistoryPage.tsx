@@ -1,3 +1,4 @@
+// лента. фильтр по типу и сроку, поиск по имени. сама операция открывается отдельно
 import { useMemo, useState } from "react";
 import { formatTxDate, useWallet } from "../wallet";
 
@@ -10,6 +11,7 @@ export default function HistoryPage({ onOpenTx }: { onOpenTx: (id: string) => vo
   const [dateFilter, setDateFilter] = useState("Всё время");
   const [search, setSearch] = useState("");
 
+  // «месяц» тут последние 30 дней, не календарный. на главной календарный, не перепутать
   const filtered = useMemo(() => {
     const now = Date.now();
     const startOfToday = new Date();

@@ -1,3 +1,4 @@
+// макет автоплатежей. список живёт только на экране, сервер по расписанию пока ничего не списывает
 import { useState } from "react";
 
 interface SmartContractProps {

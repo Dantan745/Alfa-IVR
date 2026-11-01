@@ -1,5 +1,7 @@
+// код подтверждения. от 10 тысяч сервер без него перевод не примет, тут только ввод
 import { useEffect, useRef, useState } from "react";
 
+// порог тот же, что на сервере. если разъедутся, экран попросит код зря или не попросит вовсе
 export const PAY_OTP_LIMIT = 10000;
 
 export type OtpChannel = "sms" | "email";
@@ -63,6 +65,7 @@ export default function OtpPanel({
   );
 }
 
+// шторка перед крупным переводом, qr и массовым. почта одна, если смс человеку некуда слать
 export function PayOtpSheet({
   open,
   amount,

@@ -1,3 +1,4 @@
+// лимиты человек может только ужать. выше дефолта сервер не примет, поля это повторяют
 import { useState } from "react";
 import { useWallet } from "../wallet";
 

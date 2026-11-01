@@ -1,3 +1,4 @@
+// четыре вкладки. на телефоне снизу, на широком окне слева. вложенный экран меню прячет сам
 import CrMark from "./CrMark";
 
 type Page = "home" | "payments" | "history" | "profile";

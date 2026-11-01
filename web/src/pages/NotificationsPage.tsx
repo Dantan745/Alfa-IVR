@@ -1,3 +1,4 @@
+// колокольчик. непрочитанные сверху по сути те, что read ещё false
 import { formatTxDate, useWallet } from "../wallet";
 
 export default function NotificationsPage({ onBack, onNavigate }: { onBack: () => void; onNavigate?: (page: string, extra?: string) => void }) {

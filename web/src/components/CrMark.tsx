@@ -1,6 +1,6 @@
+// знак цифрового рубля. без подписи картинка декоративная, скринридер её пропускает
 import mark from "../assets/cr-mark.png";
 
-/** Знак цифрового рубля. */
 export default function CrMark({ size = 64, title }: { size?: number; title?: string }) {
   return (
     <img

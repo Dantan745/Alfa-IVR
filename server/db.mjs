@@ -14,10 +14,13 @@ const DATA_DIR = process.env.DATA_DIR || __dirname;
 const DATA_FILE = path.join(DATA_DIR, "data.json");
 const NOTIFY_FILE = path.join(DATA_DIR, "notify.json");
 
+// int8 и numeric приходят строкой. время оставляем числом, деньги режем до копейки
 pg.types.setTypeParser(20, (value) => (value == null ? null : Number(value)));
 pg.types.setTypeParser(1700, (value) => (value == null ? null : Math.round(Number(value) * 100) / 100));
 
+// при старте, если таблиц ещё нет. старую базу догоняем ALTER ниже, отдельных миграций нет
 const SCHEMA = `
+-- клиент. ключ — почта. phone_key это последние 10 цифр, чтобы 8 и +7 не стали двумя людьми
 CREATE TABLE IF NOT EXISTS app_user (
   email               text PRIMARY KEY,
   phone               text NOT NULL,
@@ -45,12 +48,14 @@ ALTER TABLE app_user ADD CONSTRAINT app_user_otp_channel_check CHECK (otp_channe
 DROP INDEX IF EXISTS app_user_phone_key_idx;
 CREATE UNIQUE INDEX IF NOT EXISTS app_user_phone_key_idx ON app_user (phone_key) WHERE phone_key <> '';
 
+-- устройства входа. с новым device_id модель считает заход чужим
 CREATE TABLE IF NOT EXISTS user_device (
   email     text NOT NULL REFERENCES app_user (email) ON DELETE CASCADE ON UPDATE CASCADE,
   device_id text NOT NULL,
   PRIMARY KEY (email, device_id)
 );
 
+-- один кошелёк на клиента. balance кэш текущего остатка, история лежит в tx
 CREATE TABLE IF NOT EXISTS wallet (
   email         text PRIMARY KEY REFERENCES app_user (email) ON DELETE CASCADE ON UPDATE CASCADE,
   balance       numeric(14,2) NOT NULL DEFAULT 0,
@@ -67,6 +72,7 @@ CREATE TABLE IF NOT EXISTS wallet (
   alert_abroad  smallint NOT NULL DEFAULT 100
 );
 
+-- копилки. сумма тут не участвует в переводе
 CREATE TABLE IF NOT EXISTS savings (
   id     text PRIMARY KEY,
   email  text NOT NULL REFERENCES app_user (email) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -75,6 +81,7 @@ CREATE TABLE IF NOT EXISTS savings (
 );
 CREATE INDEX IF NOT EXISTS savings_email_idx ON savings (email);
 
+-- вход. в token лежит sha256, не сам ключ из браузера
 CREATE TABLE IF NOT EXISTS session (
   token           text PRIMARY KEY,
   email           text NOT NULL REFERENCES app_user (email) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -85,6 +92,7 @@ CREATE TABLE IF NOT EXISTS session (
 );
 CREATE INDEX IF NOT EXISTS session_email_idx ON session (email);
 
+-- разовый код. в code уже хеш. внешнего ключа на клиента нет: код регистрации пишется раньше, чем строка в app_user
 CREATE TABLE IF NOT EXISTS otp_code (
   purpose      text NOT NULL CHECK (purpose IN ('login', 'register', 'pay', 'reset')),
   email        text NOT NULL,
@@ -99,6 +107,7 @@ CREATE TABLE IF NOT EXISTS otp_code (
 ALTER TABLE otp_code DROP CONSTRAINT IF EXISTS otp_code_email_fkey;
 CREATE INDEX IF NOT EXISTS otp_email_idx ON otp_code (email);
 
+-- операция. amount со знаком: минус расход, плюс приход. linked_tx_id связывает пару одного перевода
 CREATE TABLE IF NOT EXISTS tx (
   id             text PRIMARY KEY,
   email          text NOT NULL REFERENCES app_user (email) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -130,6 +139,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- оценка модели рядом с операцией. сумму не хранит и не заменяет
 CREATE TABLE IF NOT EXISTS tx_mark (
   tx_id       text PRIMARY KEY REFERENCES tx (id) ON DELETE CASCADE,
   anomaly     smallint CHECK (anomaly IN (0, 1)),
@@ -137,6 +147,7 @@ CREATE TABLE IF NOT EXISTS tx_mark (
   features    jsonb
 );
 
+-- колокольчик. это не проводка, tx_id только ссылка
 CREATE TABLE IF NOT EXISTS note (
   id          text PRIMARY KEY,
   email       text NOT NULL REFERENCES app_user (email) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -149,6 +160,7 @@ CREATE TABLE IF NOT EXISTS note (
 );
 CREATE INDEX IF NOT EXISTS note_email_time_idx ON note (email, created_at DESC);
 
+-- адресная книга. owner_email чей список, phone кому платят
 CREATE TABLE IF NOT EXISTS contact (
   id            text PRIMARY KEY,
   owner_email   text NOT NULL REFERENCES app_user (email) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -161,6 +173,7 @@ CREATE TABLE IF NOT EXISTS contact (
 );
 CREATE INDEX IF NOT EXISTS contact_owner_idx ON contact (owner_email);
 
+-- кто что сделал. деньги тут не лежат, и строк держим не больше 500
 CREATE TABLE IF NOT EXISTS audit_log (
   id          text PRIMARY KEY,
   action      text NOT NULL,
@@ -169,6 +182,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS audit_time_idx ON audit_log (created_at DESC);
 
+-- одна строка настроек смс и почты. секреты, в выгрузку клиенту не попадают
 CREATE TABLE IF NOT EXISTS notify_settings (
   id           smallint PRIMARY KEY CHECK (id = 1),
   smsru_api_id text NOT NULL DEFAULT '',
@@ -182,6 +196,7 @@ CREATE TABLE IF NOT EXISTS notify_settings (
 ALTER TABLE notify_settings ADD COLUMN IF NOT EXISTS telegram_bot_token text NOT NULL DEFAULT '';
 ALTER TABLE notify_settings ADD COLUMN IF NOT EXISTS telegram_bot_user text NOT NULL DEFAULT '';
 
+-- номер и chat id бота. на перевод не влияет, бот коды больше не шлёт
 CREATE TABLE IF NOT EXISTS telegram_link (
   phone_key  text PRIMARY KEY,
   chat_id    text NOT NULL,
@@ -551,6 +566,48 @@ export async function insertWallet(wallet) {
   }
 }
 
+// новая копилка, деньги в неё ещё не кладём
+export async function createSavings(email, name) {
+  const clean = String(name || "").trim().slice(0, 32);
+  if (clean.length < 2) throw new Error("Название от 2 символов");
+  const n = await query("SELECT count(*)::int AS n FROM savings WHERE email = $1", [email]);
+  if (n.rows[0].n >= 6) throw new Error("Не больше шести копилок");
+  const id = "s" + crypto.randomBytes(4).toString("hex");
+  await query("INSERT INTO savings (id, email, name, amount) VALUES ($1, $2, $3, 0)", [id, email, clean]);
+  return id;
+}
+
+// положить на копилку или забрать на баланс. обе суммы в одной транзакции
+export async function shiftSavings(email, id, direction, amount) {
+  const move = money(amount);
+  if (!(move > 0)) throw new Error("Укажите сумму");
+  if (direction !== "in" && direction !== "out") throw new Error("Некорректная операция");
+  return withTx(async () => {
+    const locked = await query("SELECT balance FROM wallet WHERE email = $1 FOR UPDATE", [email]);
+    if (!locked.rows[0]) throw new Error("Кошелёк не найден");
+    const box = await query("SELECT name, amount FROM savings WHERE id = $1 AND email = $2 FOR UPDATE", [id, email]);
+    if (!box.rows[0]) throw new Error("Копилка не найдена");
+    const balance = Number(locked.rows[0].balance);
+    const have = Number(box.rows[0].amount);
+    const into = direction === "in";
+    if (into && balance < move) throw new Error("Недостаточно средств");
+    if (!into && have < move) throw new Error("В копилке меньше");
+    const nextBalance = money(into ? balance - move : balance + move);
+    const nextBox = money(into ? have + move : have - move);
+    await query("UPDATE wallet SET balance = $2 WHERE email = $1", [email, nextBalance]);
+    await query("UPDATE savings SET amount = $2 WHERE id = $1 AND email = $3", [id, nextBox, email]);
+    return { name: box.rows[0].name, amount: move, direction: into ? "in" : "out" };
+  });
+}
+
+// пустую копилку можно убрать. с деньгами внутри — сначала забрать
+export async function removeSavings(email, id) {
+  const r = await query("SELECT amount FROM savings WHERE id = $1 AND email = $2", [id, email]);
+  if (!r.rows[0]) throw new Error("Копилка не найдена");
+  if (Number(r.rows[0].amount) > 0) throw new Error("Сначала заберите деньги из копилки");
+  await query("DELETE FROM savings WHERE id = $1 AND email = $2", [id, email]);
+}
+
 // сохранить баланс, лимиты, копилки
 export async function saveWallet(wallet) {
   const limits = wallet.limits || {};
@@ -780,7 +837,7 @@ export async function getCode(purpose, email) {
   return { code: row.code, exp: Number(row.expires_at), channel: row.channel, dest: row.destination, sentAt: Number(row.sent_at), purpose: row.purpose, bypass: row.bypass };
 }
 
-// записать код
+// в колонку code кладём хеш. открытый код сюда не пишем
 export async function saveCode(purpose, email, rec) {
   await query(
     `INSERT INTO otp_code (purpose, email, code, channel, destination, sent_at, expires_at, bypass)
@@ -806,7 +863,7 @@ export async function lastCodeFor(email) {
   return r.rows[0]?.code;
 }
 
-// журнал
+// действие сервера, не проводка. хвост старше 500 строк срезаем
 export async function insertAudit(id, action, detail, at) {
   await query("INSERT INTO audit_log (id, action, created_at, detail) VALUES ($1, $2, $3, $4)", [id, action, at, JSON.stringify(detail || {})]);
   await query("DELETE FROM audit_log WHERE id IN (SELECT id FROM audit_log ORDER BY created_at DESC OFFSET 500)");

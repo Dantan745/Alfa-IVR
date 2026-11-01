@@ -1,3 +1,4 @@
+// список действий: перевод, qr, массовый, автоплатёж, контакты
 import { formatRub, formatTxDate, useWallet } from "../wallet";
 
 interface PaymentsPageProps {

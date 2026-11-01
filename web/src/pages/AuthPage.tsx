@@ -1,3 +1,4 @@
+// вход и регистрация в несколько шагов. черновик в localStorage, чтобы обновление страницы не стирало паспорт
 import { useEffect, useRef, useState, type HTMLAttributes } from "react";
 import imgAlfaLogo from "../imports/AndroidCompact2/c4c0fd50168f399240c6e8e131c479f4e660676b.png";
 import imgGosuslugi from "../imports/AndroidCompact2/8eaf95343e7f57475685bf10f06a3d8ffb2b9f2f.png";
@@ -48,6 +49,7 @@ type AuthDraft = {
   newPassword2: string;
 };
 
+// шапка входа. картинка знака, не отдельный экран
 function GlowLogo() {
   return (
     <div className="flex flex-col items-center pt-[max(12px,env(safe-area-inset-top))] pb-4 sm:pt-12 sm:pb-6">
@@ -106,6 +108,7 @@ function PrimaryButton({ label, onClick, disabled }: { label: string; onClick: (
   );
 }
 
+// логин, потом фио, паспорт, телефон. код шлём до того, как сервер создаст счёт
 export default function AuthPage() {
   const { login, register, requestCode, forgotPassword, resetPassword } = useWallet();
   const [step, setStep] = useState<Step>("login");
@@ -537,6 +540,7 @@ export default function AuthPage() {
   );
 }
 
+// три шага регистрации. назад возвращает на предыдущий, не выкидывает на логин
 function RegHead({ step, onBack }: { step: number; onBack: () => void }) {
   return (
     <div className="flex items-center mb-4">

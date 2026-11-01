@@ -38,6 +38,7 @@
   --hover: rgba(255, 255, 255, 0.02);
   --chip: rgba(255, 255, 255, 0.03);
   --wash: rgba(255, 255, 255, 0.06);
+  --switch-off: #5C6E70;
   --stroke: rgba(63, 78, 79, 0.7);
   --stroke-soft: rgba(63, 78, 79, 0.5);
   --avatar-from: #2A3A3C;
@@ -83,6 +84,7 @@ html[data-theme="light"] {
   --hover: rgba(18, 40, 44, 0.04);
   --chip: rgba(12, 107, 103, 0.06);
   --wash: rgba(12, 107, 103, 0.08);
+  --switch-off: #8AA0A4;
   --stroke: rgba(55, 84, 88, 0.45);
   --stroke-soft: rgba(55, 84, 88, 0.22);
   --avatar-from: #D5F3EF;
@@ -301,7 +303,8 @@ html[data-theme="light"] .bg-\[var\(--danger\)\] {
 .page-swap {
   animation: page-in 0.22s ease-out;
 }
-.tx-flash {
+.tx-flash,
+.advice-pop {
   animation: row-flash 1.1s ease-out;
 }
 .pressable {

@@ -23,8 +23,17 @@ function mime(file) {
   return "application/octet-stream";
 }
 
+function iconFile() {
+  const candidates = [
+    process.resourcesPath && path.join(process.resourcesPath, "icon.png"),
+    path.join(__dirname, "..", "resources", "icon.png"),
+    path.join(__dirname, "..", "resources", "icon.ico"),
+  ].filter(Boolean);
+  return candidates.find((file) => fs.existsSync(file)) || "";
+}
+
 function createWindow() {
-  const icon = path.join(__dirname, "..", "resources", "icon.png");
+  const icon = iconFile();
   const win = new BrowserWindow({
     width: 1100,
     height: 800,
@@ -32,7 +41,7 @@ function createWindow() {
     minHeight: 640,
     title: "Alfa Кошелёк ЦР",
     backgroundColor: "#0B0E14",
-    icon,
+    ...(icon ? { icon } : {}),
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
@@ -54,6 +63,7 @@ app.whenReady().then(() => {
     let rel = decodeURIComponent(url.pathname);
     if (rel === "/" || rel.endsWith("/")) rel += "index.html";
     rel = rel.replace(/^\/+/, "");
+    if (rel === "api" || rel.startsWith("api/")) return new Response("missing", { status: 404 });
     const root = path.resolve(wwwRoot());
     const file = path.resolve(root, rel);
     const index = path.join(root, "index.html");

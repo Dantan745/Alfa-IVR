@@ -1,3 +1,4 @@
+// отдельный экран /admin. ключ в cookie, не в токене кошелька, поэтому запросы свои
 import { useEffect, useMemo, useState } from "react";
 import { editPhoneMask } from "../validate";
 
@@ -62,6 +63,7 @@ type MlReport = {
 const NOTIFY_DRAFT = "alfa-admin-notify";
 type Tab = "overview" | "users" | "ops" | "ml";
 
+// credentials чтобы ушла cookie сессии админки. общий api.ts её не подставляет
 async function adminReq<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
@@ -71,6 +73,7 @@ async function adminReq<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+// оценка с сервера бывает долей и уже в сотых. полоска всегда из 100
 function FraudMark({ label, score, ticks, bar }: { label?: string; score?: number | null; ticks?: number | null; bar?: number | null }) {
   if (label !== "Фрод" && label !== "Норма") {
     return <span className="text-[var(--muted-45)]">нет оценки</span>;
@@ -110,6 +113,7 @@ function money(n: number) {
   return sign + abs.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) + " ₽";
 }
 
+// выгрузка операций файлом, чтобы не копировать таблицу руками
 function downloadJson(name: string, rows: unknown) {
   const blob = new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
