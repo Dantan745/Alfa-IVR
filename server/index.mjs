@@ -239,18 +239,31 @@ function passwordOk(user, password) {
   return false;
 }
 
+function mlDisplay(final) {
+  const n = Number(final);
+  if (!Number.isFinite(n)) return null;
+  const ticks = Math.round(n * 100);
+  return {
+    exact: Math.round(n * 100) / 100,
+    ticks,
+    bar: Math.min(100, Math.max(0, ticks)),
+  };
+}
+
 function decorateTx(t) {
   const final = Number(t.mlScore);
-  const has = Number.isFinite(final);
+  const shown = mlDisplay(final);
   const anomaly = Number(t.mlAnomaly) === 1;
   return {
     ...t,
-    mlScore: has ? final : null,
+    mlScore: shown ? shown.exact : null,
     mlAnomaly: anomaly ? 1 : 0,
     riskLevel: anomaly ? "fraud" : "ok",
-    riskLabel: !has ? "" : anomaly ? "Фрод" : "Норма",
-    riskExplain: has ? [`IsolationForest ${final.toFixed(3)}`] : [],
-    riskScore: has ? Math.round(final * 100) : null,
+    riskLabel: !shown ? "" : anomaly ? "Фрод" : "Норма",
+    riskExplain: shown ? [`final_score ${shown.exact} · шкала ${shown.ticks}`] : [],
+    riskScore: shown ? shown.ticks : null,
+    riskScoreExact: shown ? shown.exact : null,
+    riskBar: shown ? shown.bar : null,
   };
 }
 
@@ -263,6 +276,8 @@ function publicTx(t) {
   delete row.riskLabel;
   delete row.riskExplain;
   delete row.riskScore;
+  delete row.riskScoreExact;
+  delete row.riskBar;
   delete row.freezeReason;
   delete row.heldBy;
   delete row.heldAt;
@@ -368,6 +383,10 @@ function scoreOutgoing(email, amount, payee, sess, type = "expense") {
 
 function modelBlocks(fraud) {
   return Boolean(fraud && fraud.engine !== "unavailable" && Number(fraud.anomaly) === 1);
+}
+
+function clientBlockedMsg() {
+  return "Операция отклонена. Попробуйте позже или напишите в поддержку.";
 }
 
 function mlPatch(fraud) {
@@ -1147,7 +1166,8 @@ const server = http.createServer(async (req, res) => {
         try { assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
         const fraud = scoreOutgoing(email, amount, payee, sess, "expense");
         if (modelBlocks(fraud)) {
-          return send(res, 400, { error: `Модель антифрода отклонила перевод (score ${Number(fraud.final_score).toFixed(2)}).` });
+          console.warn("[ml] transfer blocked", { email, anomaly: fraud.anomaly, final_score: fraud.final_score });
+          return send(res, 400, { error: clientBlockedMsg() });
         }
         const outTx = addTx(email, {
           name: isRuMobile(payee) ? formatRuPhone(payee) : payee,
@@ -1188,7 +1208,8 @@ const server = http.createServer(async (req, res) => {
         if (!(amount > 0)) return send(res, 400, { error: "Укажите сумму" });
         const fraud = scoreOutgoing(email, amount, "Альфа-Банк", sess, "income");
         if (modelBlocks(fraud)) {
-          return send(res, 400, { error: `Модель антифрода отклонила пополнение (score ${Number(fraud.final_score).toFixed(2)}).` });
+          console.warn("[ml] topup blocked", { email, anomaly: fraud.anomaly, final_score: fraud.final_score });
+          return send(res, 400, { error: clientBlockedMsg() });
         }
         const inTx = addTx(email, {
           name: "Пополнение",
@@ -1216,7 +1237,8 @@ const server = http.createServer(async (req, res) => {
         try { assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
         const fraud = scoreOutgoing(email, amount, "QR-касса", sess, "expense");
         if (modelBlocks(fraud)) {
-          return send(res, 400, { error: `Модель антифрода отклонила оплату (score ${Number(fraud.final_score).toFixed(2)}).` });
+          console.warn("[ml] qr blocked", { email, anomaly: fraud.anomaly, final_score: fraud.final_score });
+          return send(res, 400, { error: clientBlockedMsg() });
         }
         const qrTx = addTx(email, {
           name: "Оплата QR",
