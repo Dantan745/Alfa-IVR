@@ -5,8 +5,8 @@ import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { deliver, loadNotify, persistNotify, publicNotify, saveNotify } from "./notify.mjs";
-import { buildReport, extractFeatures } from "./ml/index.mjs";
-import { assessRisk, buildFraudSample } from "./ml/features.mjs";
+import { buildReport, extractFeatures, scoreWithFriendModel } from "./ml/index.mjs";
+import { buildFraudSample } from "./ml/features.mjs";
 import { formatRuPhone, isRuMobile, ruMobileDigits, samePhone } from "./phone.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -240,15 +240,17 @@ function passwordOk(user, password) {
 }
 
 function decorateTx(t) {
-  const v = riskOf(t, { sample: t.mlFeatures, anomaly: t.mlAnomaly, final_score: t.mlScore });
+  const final = Number(t.mlScore);
+  const has = Number.isFinite(final);
+  const anomaly = Number(t.mlAnomaly) === 1;
   return {
     ...t,
-    mlScore: v.score / 100,
-    mlAnomaly: v.level === "fraud" ? 1 : 0,
-    riskLevel: v.level,
-    riskLabel: v.label,
-    riskExplain: v.explain,
-    riskScore: v.score,
+    mlScore: has ? final : null,
+    mlAnomaly: anomaly ? 1 : 0,
+    riskLevel: anomaly ? "fraud" : "ok",
+    riskLabel: !has ? "" : anomaly ? "Фрод" : "Норма",
+    riskExplain: has ? [`IsolationForest ${final.toFixed(3)}`] : [],
+    riskScore: has ? Math.round(final * 100) : null,
   };
 }
 
@@ -349,13 +351,30 @@ function scoreOutgoing(email, amount, payee, sess, type = "expense") {
     newDevice: sess?.newDevice || 0,
     type,
   });
-  const v = assessRisk(sample, false, 0);
+  const scored = scoreWithFriendModel([sample])[0];
+  if (!scored) {
+    console.warn("[ml] IsolationForest недоступен, операция без метки модели");
+    return { sample, score: 0, final_score: 0, anomaly: 0, engine: "unavailable" };
+  }
+  const final = Number(scored.final_score ?? scored.score ?? 0);
   return {
     sample,
-    final_score: v.score / 100,
-    anomaly: v.level === "fraud" ? 1 : 0,
-    engine: "rules",
-    verdict: v,
+    ...scored,
+    final_score: final,
+    anomaly: scored.anomaly ? 1 : 0,
+    engine: scored.engine || "anti_fraud.joblib",
+  };
+}
+
+function modelBlocks(fraud) {
+  return Boolean(fraud && fraud.engine !== "unavailable" && Number(fraud.anomaly) === 1);
+}
+
+function mlPatch(fraud) {
+  return {
+    mlFeatures: fraud.sample,
+    mlScore: fraud.final_score,
+    mlAnomaly: fraud.anomaly ? 1 : 0,
   };
 }
 
@@ -446,29 +465,6 @@ function unfreezeAccount(email) {
   return true;
 }
 
-function riskOf(tx, fraud) {
-  if (tx?.riskScore != null && tx.riskLabel && Array.isArray(tx.riskExplain) && tx.riskExplain.length) {
-    return {
-      score: tx.riskScore,
-      level: tx.riskLevel || (tx.riskScore >= 75 ? "fraud" : tx.riskScore >= 35 ? "watch" : "ok"),
-      label: tx.riskLabel,
-      flags: [],
-      explain: tx.riskExplain,
-      model: 0,
-    };
-  }
-  const sample = fraud?.sample || tx.mlFeatures || {};
-  return assessRisk(
-    { ...sample, type: tx.type, amount: Math.abs(tx.amount), signedAmount: tx.amount },
-    false,
-    0,
-  );
-}
-
-function shouldHoldFraud(tx, fraud) {
-  return riskOf(tx, fraud).level === "fraud";
-}
-
 function holdTx(tx, reason, extra = {}) {
   if (!tx || tx.status === "held" || tx.status === "rejected") return;
   tx.status = "held";
@@ -546,14 +542,6 @@ function rejectHeldTx(tx, by = "admin") {
   audit("tx.reject", { email: tx.email, txId: tx.id, by });
 }
 
-function applyHoldIfNeeded(tx, fraud, extra = {}) {
-  if (!shouldHoldFraud(tx, fraud) && !extra.force) return false;
-  const reason = extra.reason || "Антифрод: подозрение на мошенничество";
-  holdTx(tx, reason, extra);
-  freezeAccount(tx.email, reason, { txId: tx.id, by: extra.by || "antifraud" });
-  return true;
-}
-
 function audit(action, detail) {
   store.audit = store.audit || [];
   store.audit.unshift({
@@ -627,19 +615,6 @@ function addNote(email, title, body, kind = "transfer", extra = {}) {
     read: false,
     ...extra,
   });
-}
-
-function applyFraud(tx, fraud) {
-  const sample = fraud?.sample || {};
-  const v = fraud?.verdict || riskOf(tx, fraud);
-  tx.mlFeatures = sample;
-  tx.mlScore = v.score / 100;
-  tx.mlAnomaly = v.level === "fraud" ? 1 : 0;
-  tx.riskLevel = v.level;
-  tx.riskLabel = v.label;
-  tx.riskExplain = v.explain || [];
-  tx.riskScore = v.score;
-  return v;
 }
 
 function addTx(email, partial) {
@@ -1171,6 +1146,9 @@ const server = http.createServer(async (req, res) => {
         if (amount > wallet.balance) return send(res, 400, { error: "Недостаточно средств" });
         try { assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
         const fraud = scoreOutgoing(email, amount, payee, sess, "expense");
+        if (modelBlocks(fraud)) {
+          return send(res, 400, { error: `Модель антифрода отклонила перевод (score ${Number(fraud.final_score).toFixed(2)}).` });
+        }
         const outTx = addTx(email, {
           name: isRuMobile(payee) ? formatRuPhone(payee) : payee,
           amount: -amount,
@@ -1180,12 +1158,11 @@ const server = http.createServer(async (req, res) => {
           comment,
           counterparty: payee,
           holdQuery: payee,
+          ...mlPatch(fraud),
         });
         addNote(email, "Списание", `${payee}: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: outTx.id });
-        applyFraud(outTx, fraud);
-        const held = applyHoldIfNeeded(outTx, fraud);
         const other = findPayee(payee, email);
-        if (other && !held) {
+        if (other) {
           const inTx = addTx(other.email, {
             name: `${store.users[email].lastName} ${store.users[email].firstName}`.trim(),
             amount,
@@ -1210,6 +1187,9 @@ const server = http.createServer(async (req, res) => {
         try { assertNotFrozen(email); } catch (e) { return send(res, 400, { error: e.message }); }
         if (!(amount > 0)) return send(res, 400, { error: "Укажите сумму" });
         const fraud = scoreOutgoing(email, amount, "Альфа-Банк", sess, "income");
+        if (modelBlocks(fraud)) {
+          return send(res, 400, { error: `Модель антифрода отклонила пополнение (score ${Number(fraud.final_score).toFixed(2)}).` });
+        }
         const inTx = addTx(email, {
           name: "Пополнение",
           amount,
@@ -1218,10 +1198,9 @@ const server = http.createServer(async (req, res) => {
           category: "Доходы",
           comment: "С карты",
           counterparty: "Альфа-Банк",
+          ...mlPatch(fraud),
         });
         addNote(email, "Поступление", `Пополнение: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: inTx.id });
-        applyFraud(inTx, fraud);
-        applyHoldIfNeeded(inTx, fraud);
         saveDb(store);
         send(res, 200, snapshot(email));
         return;
@@ -1236,6 +1215,9 @@ const server = http.createServer(async (req, res) => {
         if (amount > wallet.balance) return send(res, 400, { error: "Недостаточно средств" });
         try { assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
         const fraud = scoreOutgoing(email, amount, "QR-касса", sess, "expense");
+        if (modelBlocks(fraud)) {
+          return send(res, 400, { error: `Модель антифрода отклонила оплату (score ${Number(fraud.final_score).toFixed(2)}).` });
+        }
         const qrTx = addTx(email, {
           name: "Оплата QR",
           amount: -amount,
@@ -1244,10 +1226,9 @@ const server = http.createServer(async (req, res) => {
           category: "Прочее",
           comment: "QR",
           counterparty: "QR-касса",
+          ...mlPatch(fraud),
         });
         addNote(email, "Списание", `QR: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: qrTx.id });
-        applyFraud(qrTx, fraud);
-        applyHoldIfNeeded(qrTx, fraud);
         saveDb(store);
         send(res, 200, snapshot(email));
         return;
@@ -1269,6 +1250,10 @@ const server = http.createServer(async (req, res) => {
             continue;
           }
           const fraud = scoreOutgoing(email, amount, phone || name, sess, "expense");
+          if (modelBlocks(fraud)) {
+            fail += 1;
+            continue;
+          }
           const bulkTx = addTx(email, {
             name: `Массовый: ${name}`,
             amount: -amount,
@@ -1277,11 +1262,10 @@ const server = http.createServer(async (req, res) => {
             category: "Переводы",
             comment: "Массовый платёж",
             counterparty: phone || name,
+            ...mlPatch(fraud),
           });
-          applyFraud(bulkTx, fraud);
-          const held = applyHoldIfNeeded(bulkTx, fraud);
           const other = findPayee(phone || name, email);
-          if (other && !held) {
+          if (other) {
             const inTx = addTx(other.email, {
               name: `Массовый от ${store.users[email].firstName}`,
               amount,

@@ -20,7 +20,7 @@ def score_transfer(sample, is_night=0):
     values = [float(sample[name]) for name in features]
     raw = float(-model.decision_function(np.array([values], dtype=float))[0])
     score = (raw - float(bundle['min'])) / (float(bundle['max']) - float(bundle['min']) + 1e-10)
-    final_score = score + float(bundle['night_weight']) * int(is_night)
+    final_score = score + float(bundle.get('night_weight', 0) or 0) * int(is_night)
     anomaly = int(final_score >= float(bundle['threshold']))
     return {
         'score': score,

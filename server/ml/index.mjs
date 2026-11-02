@@ -21,7 +21,7 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assessRisk, extractFraudRows, FRAUD_FEATURES } from "./features.mjs";
+import { extractFraudRows, FRAUD_FEATURES } from "./features.mjs";
 
 const DAY = 86400000;
 const ML_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ function pythonBin() {
   if (cachedPy !== undefined) return cachedPy;
   cachedPy = null;
   for (const cmd of [process.env.PYTHON, "python", "py", "python3"].filter(Boolean)) {
-    const probe = spawnSync(cmd, ["-c", "import joblib, numpy, sklearn"], { encoding: "utf8", timeout: 4000 });
+    const probe = spawnSync(cmd, ["-c", "import joblib, numpy, sklearn"], { encoding: "utf8", timeout: 20000 });
     if (probe.status === 0) {
       cachedPy = cmd;
       break;
@@ -40,28 +40,23 @@ function pythonBin() {
   return cachedPy;
 }
 
-let pyBusy = false;
 export function scoreWithFriendModel(samples) {
   const list = Array.isArray(samples) ? samples : [samples];
   if (!list.length) return [];
-  if (pyBusy) return list.map(() => null);
   const bin = pythonBin();
   if (!bin) return list.map(() => null);
-  pyBusy = true;
   let run;
   try {
     run = spawnSync(bin, [path.join(ML_DIR, "score.py")], {
       input: JSON.stringify(list),
       encoding: "utf8",
-      timeout: 8000,
+      timeout: 20000,
       windowsHide: true,
     });
   } catch (e) {
-    pyBusy = false;
     console.warn("[ml] python score threw:", e.message);
     return list.map(() => null);
   }
-  pyBusy = false;
   if (run.status !== 0) {
     console.warn("[ml] python score failed:", (run.stderr || run.stdout || "").slice(0, 400));
     return list.map(() => null);
@@ -189,15 +184,6 @@ export function extractFeatures(store) {
   };
 }
 
-export function flagsFor(row) {
-  return assessRisk(row, false, 0).flags;
-}
-
-export function isStrange(row, modelAnomaly, final) {
-  const v = assessRisk(row, modelAnomaly, final);
-  return v.level !== "ok";
-}
-
 export function mergeAnomalies(...lists) {
   const map = new Map();
   for (const list of lists) {
@@ -224,41 +210,36 @@ export function mergeAnomalies(...lists) {
 }
 
 export function runCustomModel(features) {
-  const rows = (features.fraud || []).slice(0, 120);
-  const anomalies = [];
+  const rows = (features.fraud || []).slice(0, 80);
+  const scoredRaw = scoreWithFriendModel(rows);
   const scored = [];
-  for (const row of rows) {
-    const v = row.riskScore != null && row.riskLabel
-      ? {
-          score: row.riskScore,
-          level: row.riskLevel || (row.riskScore >= 75 ? "fraud" : row.riskScore >= 35 ? "watch" : "ok"),
-          label: row.riskLabel,
-          flags: [],
-          explain: row.riskExplain || [],
-          model: 0,
-        }
-      : assessRisk(row, false, 0);
-    scored.push({
+  const anomalies = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const s = scoredRaw[i];
+    const final = Number(s?.final_score ?? s?.score ?? row.savedScore ?? 0);
+    const anomaly = s ? Number(s.anomaly) === 1 : Number(row.savedAnomaly) === 1;
+    const item = {
       id: row.id,
       email: row.email,
       amount: row.signedAmount != null ? row.signedAmount : -row.amount,
       createdAt: row.createdAt,
       counterparty: row.counterparty,
-      z: Number(v.model.toFixed(3)),
-      flags: v.flags,
-      explain: v.explain,
-      score: v.score,
-      level: v.level,
-      label: v.label,
-      engine: "rules",
-    });
-    if (v.level === "ok") continue;
-    anomalies.push(scored[scored.length - 1]);
+      z: Number(final.toFixed(3)),
+      flags: anomaly ? ["IsolationForest"] : [],
+      explain: s ? [`final_score ${final.toFixed(3)}`] : [],
+      score: Math.round(final * 100),
+      level: anomaly ? "fraud" : "ok",
+      label: anomaly ? "Фрод" : "Норма",
+      engine: s?.engine || "anti_fraud.joblib",
+    };
+    scored.push(item);
+    if (anomaly) anomalies.push(item);
   }
   return {
-    engine: "rules",
-    notes: "Каждая операция получает баллы и расшифровку. Модель коллеги не блокирует запросы.",
-    anomalies: mergeAnomalies(anomalies).slice(0, 60),
+    engine: scoredRaw.some(Boolean) ? "anti_fraud.joblib" : "unavailable",
+    notes: "Метку ставит IsolationForest из anti_fraud.joblib. Балльных правил нет.",
+    anomalies: anomalies.slice(0, 60),
     scored: scored.slice(0, 80),
     fraudFeatures: FRAUD_FEATURES,
   };
@@ -389,7 +370,7 @@ export function buildReport(store, { horizonDays = 7 } = {}) {
     scored: custom?.scored || [],
     generatedAt: Date.now(),
     today: last,
-    anomalies: mergeAnomalies(custom?.anomalies, baseline.anomalies).slice(0, 60),
+    anomalies: (custom?.anomalies || []).slice(0, 60),
     riskUsers: custom?.riskUsers || baseline.riskUsers,
   };
 }

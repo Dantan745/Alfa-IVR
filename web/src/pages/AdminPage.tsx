@@ -494,7 +494,7 @@ export default function AdminPage() {
                     <div className="max-h-48 overflow-y-auto">
                       {detail.txs.map((t) => (
                         <div key={t.id} className="py-1.5 border-b border-white/5">
-                          <p>{new Date(t.createdAt).toLocaleString("ru-RU")} · {t.name} · {money(t.amount)} · <span style={{ color: t.riskLabel === "Мошенник" ? "#FFB4AB" : t.riskLabel === "Терпимо" ? "#E8C07A" : "#48FFD5" }}>{t.riskLabel || "Норма"} {t.riskScore != null ? `${t.riskScore}/100` : ""}</span> {t.status === "held" ? <span className="text-[#FFB4AB]">ЗАМОРОЖЕНА</span> : t.status === "rejected" ? <span className="text-[#FFB4AB]">ОТКЛОНЕНА</span> : null}</p>
+                          <p>{new Date(t.createdAt).toLocaleString("ru-RU")} · {t.name} · {money(t.amount)} · <span style={{ color: t.riskLabel === "Фрод" || t.riskLabel === "Мошенник" ? "#FFB4AB" : "#48FFD5" }}>{t.riskLabel || "Норма"} {t.riskScore != null ? `${t.riskScore}/100` : ""}</span> {t.status === "held" ? <span className="text-[#FFB4AB]">ЗАМОРОЖЕНА</span> : t.status === "rejected" ? <span className="text-[#FFB4AB]">ОТКЛОНЕНА</span> : null}</p>
                           {t.riskExplain?.length ? <p className="text-[11px] text-[rgba(185,202,203,0.55)]">{t.riskExplain.join(" · ")}</p> : null}
                           <div className="flex flex-wrap gap-1 mt-1">
                             {t.status === "held" ? (
@@ -545,7 +545,7 @@ export default function AdminPage() {
                     {t.status === "held" ? <span className="text-[#FFB4AB]"> · ЗАМОРОЖЕНА</span> : null}
                     {t.status === "rejected" ? <span className="text-[#FFB4AB]"> · ОТКЛОНЕНА</span> : null}
                     {" · "}
-                    <span style={{ color: t.riskLabel === "Мошенник" || t.status === "held" ? "#FFB4AB" : t.riskLabel === "Терпимо" ? "#E8C07A" : "#48FFD5" }}>
+                    <span style={{ color: t.riskLabel === "Фрод" || t.riskLabel === "Мошенник" || t.status === "held" ? "#FFB4AB" : "#48FFD5" }}>
                       {t.riskLabel || "Норма"} {t.riskScore != null ? `${t.riskScore}/100` : ""}
                     </span>
                   </p>
@@ -575,10 +575,9 @@ export default function AdminPage() {
             <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
               <p className="text-[16px] font-medium">Как считается оценка</p>
               <p className="text-[13px] text-[rgba(185,202,203,0.7)] mt-2 leading-relaxed">
-                В момент операции сервер сразу ставит баллы 1–100 и подпись: <b className="text-[#48FFD5]">Норма</b>, <b className="text-[#E8C07A]">Терпимо</b> или <b className="text-[#FFB4AB]">Мошенник</b>.
-                Стартовые 8 баллов, затем плюсы за нового получателя, ночь, новое устройство, сумму относительно среднего чека и нереалистичный размер.
-                Пополнение через банк не считается «новым получателем». Python-модель коллеги больше не держит запросы: список и прогноз берутся из уже посчитанных операций и обновляются каждые 2 секунды.
-                Клиенту баллы не показываются. Заморозка — только у «Мошенник» или вручную.
+                Оценку ставит IsolationForest (<b className="text-[#00D2D3]">anti_fraud.joblib</b>): сервер собирает 8 фичей и вызывает <b className="text-[#00D2D3]">score.py</b>.
+                Метка <b className="text-[#FFB4AB]">Фрод</b> — это <b>anomaly</b> модели по её порогу. Балльной таблицы больше нет.
+                Если модель пометила операцию, перевод, QR, массовый платёж и пополнение отклоняются до списания. Ручная заморозка в админке остаётся отдельно.
               </p>
               <p className="text-[12px] text-[#00D2D3] mt-2">{mlMsg}</p>
 
@@ -586,14 +585,15 @@ export default function AdminPage() {
                 <p className="text-[14px] font-medium mb-2">Фичи, используемые для обучения модели антифрода</p>
                 <ol className="text-[13px] text-[rgba(185,202,203,0.8)] list-decimal pl-5 space-y-1">
                   {(ml?.features?.fraudFeatures || [
-                    { name: "amount", desc: "абсолютная сумма операции" },
-                    { name: "amount_to_avg_ratio", desc: "во сколько раз операция превышает средний чек пользователя" },
+                    { name: "log_amount", desc: "log1p от абсолютной суммы операции" },
+                    { name: "amount_to_avg_ratio", desc: "во сколько раз операция превышает средний чек счёта" },
                     { name: "hour", desc: "час суток (0-23)" },
-                    { name: "is_night", desc: "бинарный флаг ночной операции (с 23:00 до 06:00)" },
-                    { name: "is_new_payee", desc: "флаг первого перевода новому получателю (0 или 1)" },
+                    { name: "is_night", desc: "ночная операция с 23:00 до 06:00 (0 или 1)" },
                     { name: "login_attempts", desc: "количество попыток входа (от 1 и выше)" },
-                    { name: "time_since_last_transaction", desc: "время после последней транзакции пользователя" },
-                    { name: "new_device", desc: "сопоставляет id девайса и id аккаунта и смотрит была ли раньше такая пара" },
+                    { name: "is_new_payee", desc: "флаг первого перевода новому получателю (0 или 1)" },
+                    { name: "time_since_last_transaction", desc: "секунды после последней транзакции пользователя" },
+                    { name: "is_new_device", desc: "пара аккаунт и устройство встретилась впервые" },
+                    { name: "amount_to_balance", desc: "сумма операции, делённая на баланс до проводки" },
                   ]).map((f) => (
                     <li key={f.name}><code className="text-[#00D2D3]">{f.name}</code> — {f.desc}</li>
                   ))}
@@ -666,7 +666,7 @@ export default function AdminPage() {
                         <p>
                           <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
                           {" · "}
-                          <span style={{ color: a.level === "fraud" ? "#FFB4AB" : "#E8C07A" }}>{a.label || (a.score >= 75 ? "Мошенник" : "Терпимо")}</span>
+                          <span style={{ color: a.level === "fraud" ? "#FFB4AB" : "#48FFD5" }}>{a.label || (a.level === "fraud" ? "Фрод" : "Норма")}</span>
                           {" · "}
                           {a.score}/100 · {a.email} · {money(a.amount)} · {(a.explain || a.flags || []).join(" · ")}
                         </p>
