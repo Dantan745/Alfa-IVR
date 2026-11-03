@@ -74,22 +74,16 @@ async function adminReq<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-function FraudMark({ label, ticks, exact, bar }: { label?: string; ticks?: number | null; exact?: number | null; bar?: number | null }) {
-  const fraud = label === "Фрод" || label === "Мошенник";
-  const shownExact = exact != null ? exact : ticks != null ? Math.round(ticks) / 100 : null;
-  const fill = bar != null ? bar : ticks != null ? Math.min(100, Math.max(0, ticks)) : 0;
+function FraudMark({ label, score }: { label?: string; score?: number | null }) {
+  if (label !== "Фрод" && label !== "Норма") {
+    return <span className="text-[rgba(185,202,203,0.45)]">нет оценки</span>;
+  }
+  const fraud = label === "Фрод";
+  const shown = score != null && Number.isFinite(score) ? score : null;
   return (
-    <span className="inline-flex items-center gap-2 align-middle flex-wrap">
-      <span style={{ color: fraud ? "#FFB4AB" : "#48FFD5" }}>{label || "Норма"}</span>
-      {ticks != null ? (
-        <>
-          <span className="text-[rgba(185,202,203,0.7)]">{shownExact}</span>
-          <span className="inline-block w-[72px] h-[6px] rounded-full bg-white/10 overflow-hidden shrink-0">
-            <span className="block h-full rounded-full" style={{ width: `${fill}%`, background: "linear-gradient(90deg,#00D2D3,#E8C07A)" }} />
-          </span>
-          <span className="text-[rgba(185,202,203,0.55)]">{ticks > 100 ? `${ticks}` : `${ticks}/100`}</span>
-        </>
-      ) : null}
+    <span className="inline-flex items-center gap-2 align-middle">
+      <span style={{ color: fraud ? "#FFB4AB" : "#48FFD5" }}>{label}</span>
+      {shown != null ? <span className="text-[rgba(185,202,203,0.7)]">{shown}</span> : null}
     </span>
   );
 }
@@ -514,8 +508,7 @@ export default function AdminPage() {
                     <div className="max-h-48 overflow-y-auto">
                       {detail.txs.map((t) => (
                         <div key={t.id} className="py-1.5 border-b border-white/5">
-                          <p>{new Date(t.createdAt).toLocaleString("ru-RU")} · {t.name} · {money(t.amount)} · <FraudMark label={t.riskLabel || "Норма"} ticks={t.riskScore} exact={t.riskScoreExact} bar={t.riskBar} /> {t.status === "held" ? <span className="text-[#FFB4AB]">ЗАМОРОЖЕНА</span> : t.status === "rejected" ? <span className="text-[#FFB4AB]">ОТКЛОНЕНА</span> : null}</p>
-                          {t.riskExplain?.length ? <p className="text-[11px] text-[rgba(185,202,203,0.55)]">{t.riskExplain.join(" · ")}</p> : null}
+                          <p>{new Date(t.createdAt).toLocaleString("ru-RU")} · {t.name} · {money(t.amount)} · <FraudMark label={t.riskLabel} score={t.riskScoreExact} /> {t.status === "held" ? <span className="text-[#FFB4AB]">ЗАМОРОЖЕНА</span> : t.status === "rejected" ? <span className="text-[#FFB4AB]">ОТКЛОНЕНА</span> : null}</p>
                           <div className="flex flex-wrap gap-1 mt-1">
                             {t.status === "held" ? (
                               <>
@@ -565,11 +558,8 @@ export default function AdminPage() {
                     {t.status === "held" ? <span className="text-[#FFB4AB]"> · ЗАМОРОЖЕНА</span> : null}
                     {t.status === "rejected" ? <span className="text-[#FFB4AB]"> · ОТКЛОНЕНА</span> : null}
                     {" · "}
-                    <FraudMark label={t.riskLabel || "Норма"} ticks={t.riskScore} exact={t.riskScoreExact} bar={t.riskBar} />
+                    <FraudMark label={t.riskLabel} score={t.riskScoreExact} />
                   </p>
-                  {t.riskExplain?.length ? (
-                    <p className="text-[11px] text-[rgba(185,202,203,0.55)] mt-0.5">{t.riskExplain.join(" · ")}</p>
-                  ) : null}
                   <div className="flex flex-wrap gap-1 mt-1">
                     {t.status === "held" ? (
                       <>
@@ -593,9 +583,7 @@ export default function AdminPage() {
             <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
               <p className="text-[16px] font-medium">Как считается оценка</p>
               <p className="text-[13px] text-[rgba(185,202,203,0.7)] mt-2 leading-relaxed">
-                Модель отдаёт два поля отдельно. <b className="text-[#FFB4AB]">Фрод / Норма</b> берётся только из <b>anomaly</b> (порог 0.71 внутри joblib: ниже — Норма, от 0.71 — Фрод и платёж отклоняется).
-                <b>final_score</b> — непрерывный скор, не вероятность: в админке число <b>round(final_score × 100)/100</b>, шкала <b>min(100, round(final_score × 100))</b>. Если скор &gt; 1, число на экране может быть больше 100, полоска всё равно упирается в 100.
-                Шкалу в решение не превращаем: 66 ещё может быть Норма, 71 — уже Фрод, если так сказала метка. Клиенту ни метка, ни число не отдаются.
+                Рядом с операцией два поля модели и ничего больше. <b className="text-[#FFB4AB]">Фрод / Норма</b> — только <b>anomaly</b>. Число — <b>final_score</b>, округлённый до сотых, это не вероятность и не уровень «из 100». Если модель не ответила, пишется «нет оценки», платёж из-за этого сам не помечается фродом. Клиенту ни метка, ни число не отдаются.
               </p>
               <p className="text-[12px] text-[#00D2D3] mt-2">{mlMsg}</p>
 
@@ -663,48 +651,34 @@ export default function AdminPage() {
                       <p>
                         <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
                         {" · "}
-                        <FraudMark label={a.label || "Норма"} ticks={a.score} exact={a.scoreExact} bar={a.scoreBar} />
+                        <FraudMark label={a.label} score={a.scoreExact ?? a.score} />
                         {" · "}
                         {a.email} · {money(a.amount)}
                         {a.counterparty ? ` · ${a.counterparty}` : ""}
                       </p>
-                      {(a.explain || a.flags || []).length ? (
-                        <p className="text-[11px] text-[rgba(185,202,203,0.55)] mt-0.5">{(a.explain || a.flags || []).join(" · ")}</p>
-                      ) : null}
                     </div>
                   ))}
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
-                    <p className="text-[14px] font-medium mb-2">Аномалии · новые сверху</p>
-                    {ml.anomalies.length === 0 && <p className="text-[13px] text-[rgba(185,202,203,0.45)]">Пока нет выбросов</p>}
-                    {ml.anomalies.slice(0, 40).map((a) => (
-                      <div key={a.id} className="text-[12px] py-1.5 border-b border-white/5">
-                        <p>
-                          <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
-                          {" · "}
-                          <FraudMark label={a.label || (a.level === "fraud" ? "Фрод" : "Норма")} ticks={a.score} exact={a.scoreExact} bar={a.scoreBar} />
-                          {" · "}
-                          {a.email} · {money(a.amount)} · {(a.explain || a.flags || []).join(" · ")}
-                        </p>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(a.id, "hold", { reason: "Антифрод: подозрение на мошенничество" })}>Заморозить</button>
-                          <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#0B1A1A]" style={{ background: "#00D2D3" }} onClick={() => void txOp(a.id, "release")}>Провести</button>
-                          <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOpEmail(a.email, "unfreeze")}>Разморозить счёт</button>
-                        </div>
+                <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
+                  <p className="text-[14px] font-medium mb-2">Фрод · anomaly = 1</p>
+                  {ml.anomalies.length === 0 && <p className="text-[13px] text-[rgba(185,202,203,0.45)]">Модель не пометила ни одной операции</p>}
+                  {ml.anomalies.slice(0, 40).map((a) => (
+                    <div key={a.id} className="text-[12px] py-1.5 border-b border-white/5">
+                      <p>
+                        <span className="text-[rgba(185,202,203,0.5)]">{a.createdAt ? new Date(a.createdAt).toLocaleString("ru-RU") : ""}</span>
+                        {" · "}
+                        <FraudMark label={a.label} score={a.scoreExact ?? a.score} />
+                        {" · "}
+                        {a.email} · {money(a.amount)}
+                      </p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#FFB4AB]" style={{ background: "rgba(255,180,171,0.12)" }} onClick={() => void txOp(a.id, "hold", { reason: "Антифрод: подозрение на мошенничество" })}>Заморозить</button>
+                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#0B1A1A]" style={{ background: "#00D2D3" }} onClick={() => void txOp(a.id, "release")}>Провести</button>
+                        <button type="button" className="px-2 py-1 rounded-[8px] text-[11px] text-[#00D2D3]" style={{ background: "rgba(0,210,211,0.12)" }} onClick={() => void userOpEmail(a.email, "unfreeze")}>Разморозить счёт</button>
                       </div>
-                    ))}
-                  </div>
-                  <div className="rounded-[20px] p-4" style={{ background: "#191C1C" }}>
-                    <p className="text-[14px] font-medium mb-2">Риск по клиентам</p>
-                    {ml.riskUsers.length === 0 && <p className="text-[13px] text-[rgba(185,202,203,0.45)]">Нет повышенного риска</p>}
-                    {ml.riskUsers.map((u) => (
-                      <button key={u.email} type="button" className="block w-full text-left text-[12px] py-1.5 border-b border-white/5" onClick={() => { setTab("users"); setSel(u.email); }}>
-                        {u.risk}/100 · {u.email} · {money(u.balance)} · {u.reasons.join("; ")}
-                      </button>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                 </div>
               </>
             )}
