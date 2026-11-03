@@ -171,6 +171,14 @@ input::placeholder, textarea::placeholder {
   0% { background: rgba(0, 210, 211, 0.22); }
   100% { background: transparent; }
 }
+@keyframes qr-beam {
+  0% { top: 10%; }
+  50% { top: 82%; }
+  100% { top: 10%; }
+}
+.qr-beam {
+  animation: qr-beam 2.2s ease-in-out infinite;
+}
 @keyframes pulse-dot {
   0%, 100% { opacity: 0.45; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.15); }
