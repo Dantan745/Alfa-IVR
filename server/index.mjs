@@ -4,17 +4,18 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { deliver, loadNotify, persistNotify, publicNotify, saveNotify } from "./notify.mjs";
+import { deliver, loadNotify, hydrateNotify, publicNotify, saveNotify } from "./notify.mjs";
 import { buildReport, extractFeatures, runCustomModel, scoreWithFriendModelAsync } from "./ml/index.mjs";
 import { buildFraudSample } from "./ml/features.mjs";
 import { formatRuPhone, isRuMobile, ruMobileDigits, samePhone } from "./phone.mjs";
+import { hashPassword, isScryptHash, verifyPassword } from "./passwords.mjs";
+import * as db from "./db.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
 const DATA_DIR = process.env.DATA_DIR || __dirname;
 const DATA_FILE = path.join(DATA_DIR, "data.json");
-persistNotify();
 const DIST = path.join(__dirname, "..", "web", "dist");
 const DEMO_EMAIL = "ivan@alfa.demo";
 const DEMO_PASS = "Demo1234";
@@ -49,94 +50,6 @@ function lanAddresses() {
   return [...new Set(out)].sort((a, b) => rank(a) - rank(b));
 }
 
-function emptyDb() {
-  return { users: {}, wallets: {}, txs: [], notes: [], contacts: [], sessions: {}, codes: {}, audit: [] };
-}
-
-function seedDemo(db) {
-  if (db.users[DEMO_EMAIL]) return;
-  db.users[DEMO_EMAIL] = {
-    email: DEMO_EMAIL,
-    passwordHash: sha256(DEMO_PASS),
-    passwordPlain: DEMO_PASS,
-    lastName: "Иванов",
-    firstName: "Иван",
-    middleName: "Иванович",
-    phone: "+7 (900) 123-45-67",
-    passport: "4510 123456",
-    walletId: "WLT-00123456-ЦР",
-    createdAt: Date.now() - 86400000 * 40,
-  };
-  db.wallets[DEMO_EMAIL] = {
-    email: DEMO_EMAIL,
-    balance: 5000,
-    savings: [
-      { id: "s1", name: "Копилка 1", amount: 200 },
-      { id: "s2", name: "Копилка 2", amount: 100 },
-    ],
-    biometric: false,
-    pin: "1234",
-    hideBalance: false,
-    limits: defaultLimits(),
-  };
-  const seedTx = [
-    { id: "t1", name: "Кофейня «Прим»", amount: -320, type: "expense", icon: "local_cafe", category: "Кафе", createdAt: nowOffset(0, 9, 41), comment: "Капучино", counterparty: "ООО Прим" },
-    { id: "t2", name: "Петров А.С.", amount: 5000, type: "income", icon: "person", category: "Переводы", createdAt: nowOffset(1, 18, 22), comment: "Возврат", counterparty: "+7 (900) 123-45-67" },
-    { id: "t3", name: "Пятёрочка", amount: -1240, type: "expense", icon: "shopping_cart", category: "Продукты", createdAt: nowOffset(1, 14, 5), comment: "", counterparty: "X5 Group" },
-    { id: "t4", name: "Зарплата", amount: 65000, type: "income", icon: "work", category: "Доходы", createdAt: nowOffset(3, 9, 0), comment: "Аванс", counterparty: "ООО Альфа" },
-    { id: "t5", name: "Яндекс.Такси", amount: -480, type: "expense", icon: "directions_car", category: "Транспорт", createdAt: nowOffset(4, 22, 30), comment: "", counterparty: "Яндекс Go" },
-    { id: "t6", name: "Аптека 36,6", amount: -890, type: "expense", icon: "local_pharmacy", category: "Здоровье", createdAt: nowOffset(5, 16, 10), comment: "", counterparty: "36,6" },
-    { id: "t7", name: "Смирнова О.В.", amount: 2500, type: "income", icon: "person", category: "Переводы", createdAt: nowOffset(6, 11, 0), comment: "", counterparty: "+7 (915) 234-56-78" },
-    { id: "t8", name: "Связной", amount: -3200, type: "expense", icon: "phone_android", category: "Электроника", createdAt: nowOffset(7, 15, 30), comment: "", counterparty: "Связной" },
-    { id: "t9", name: "Оплата QR", amount: -150, type: "expense", icon: "qr_code", category: "Прочее", createdAt: nowOffset(8, 12, 0), comment: "", counterparty: "QR-касса" },
-    { id: "t10", name: "Возврат", amount: 750, type: "income", icon: "undo", category: "Переводы", createdAt: nowOffset(9, 10, 0), comment: "", counterparty: "Маркет" },
-  ];
-  let running = 5000;
-  for (const row of [...seedTx].sort((a, b) => b.createdAt - a.createdAt)) {
-    db.txs.push({ ...row, email: DEMO_EMAIL, status: "done", balanceAfter: Math.max(0, running) });
-    running -= row.amount;
-  }
-  db.notes.push(
-    { id: "n2", email: DEMO_EMAIL, title: "Перевод получен", body: "Петров А.С. отправил вам 5 000 ₽", kind: "transfer", createdAt: nowOffset(1, 18, 22), read: false, txId: "t2" },
-    { id: "n3", email: DEMO_EMAIL, title: "Вход в кошелёк", body: "Успешная авторизация с этого устройства", kind: "security", createdAt: nowOffset(0, 8, 0), read: true },
-  );
-}
-
-function loadDb() {
-  let db = emptyDb();
-  try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    if (fs.existsSync(DATA_FILE)) db = { ...emptyDb(), ...JSON.parse(fs.readFileSync(DATA_FILE, "utf8")) };
-  } catch {
-    db = emptyDb();
-  }
-  seedDemo(db);
-  if (db.users[DEMO_EMAIL] && !db.users[DEMO_EMAIL].passwordPlain) {
-    db.users[DEMO_EMAIL].passwordPlain = DEMO_PASS;
-    db.users[DEMO_EMAIL].passwordHash = sha256(DEMO_PASS);
-  }
-  db.contacts = (db.contacts || []).filter((c) => !["c1", "c2", "c3", "c4"].includes(c.id));
-  db.notes = (db.notes || []).filter((n) => {
-    if (n.id === "n1") return false;
-    const body = String(n.body || "");
-    if (n.kind === "anomaly" && /незнакомого устройства/i.test(body) && !n.txId) return false;
-    return true;
-  });
-  if (!db.codes) db.codes = {};
-  if (!db.audit) db.audit = [];
-  for (const w of Object.values(db.wallets || {})) {
-    if (!w.limits) w.limits = defaultLimits();
-  }
-  for (const u of Object.values(db.users || {})) {
-    if (u.phone && isRuMobile(u.phone)) u.phone = formatRuPhone(u.phone);
-    if (!u.loginAttempts) u.loginAttempts = 1;
-    if (!u.lastLoginAttempts) u.lastLoginAttempts = 1;
-    if (!Array.isArray(u.devices)) u.devices = [];
-  }
-  saveDb(db);
-  return db;
-}
-
 function defaultLimits() {
   return { day: 50000, month: 100000, op: 30000, abroad: 10000, alertDay: 80, alertMonth: 70, alertOp: 90, alertAbroad: 100 };
 }
@@ -154,31 +67,22 @@ function startOfMonth(ts = Date.now()) {
   return d.getTime();
 }
 
-function spentSince(email, fromTs, transfersOnly) {
-  return (store.txs || [])
-    .filter((t) => {
-      if (t.email !== email || !(t.amount < 0) || (t.createdAt || 0) < fromTs) return false;
-      if (!transfersOnly) return true;
-      return t.category === "Переводы" || t.icon === "qr_code" || t.icon === "upload_file";
-    })
-    .reduce((s, t) => s + Math.abs(t.amount), 0);
+async function limitsOf(email) {
+  const wallet = await db.getWallet(email);
+  return { ...defaultLimits(), ...(wallet?.limits || {}) };
 }
 
-function limitsOf(email) {
-  return { ...defaultLimits(), ...(store.wallets[email]?.limits || {}) };
-}
-
-function usageOf(email) {
+async function usageOf(email) {
   return {
-    day: spentSince(email, startOfDay(), true),
-    month: spentSince(email, startOfMonth(), false),
+    day: await db.spentSince(email, startOfDay(), true),
+    month: await db.spentSince(email, startOfMonth(), false),
     abroad: 0,
   };
 }
 
-function assertLimits(email, amount) {
-  const L = limitsOf(email);
-  const u = usageOf(email);
+async function assertLimits(email, amount) {
+  const L = await limitsOf(email);
+  const u = await usageOf(email);
   if (amount > L.op) {
     throw new Error(`Превышен лимит одной операции (${L.op.toLocaleString("ru-RU")} ₽)`);
   }
@@ -190,23 +94,13 @@ function assertLimits(email, amount) {
   }
 }
 
-function saveDb(db) {
-  const tmp = DATA_FILE + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
-  fs.renameSync(tmp, DATA_FILE);
-}
-
-let store = loadDb();
-let chain = Promise.resolve();
 function locked(fn) {
-  const run = chain.then(fn, fn);
-  chain = run.then(() => undefined, () => undefined);
-  return run;
+  return db.withTx(fn);
 }
 
 function publicUser(u, extra = {}) {
   if (!u) return null;
-  const { passwordHash, passwordPlain, devices, freezeReason, frozenBy, frozenTxId, frozenAt, ...rest } = u;
+  const { passwordHash, devices, freezeReason, frozenBy, frozenTxId, frozenAt, ...rest } = u;
   if (extra.admin) {
     return {
       ...rest,
@@ -214,7 +108,6 @@ function publicUser(u, extra = {}) {
       frozenBy,
       frozenTxId,
       frozenAt,
-      password: passwordPlain || "",
       devices: devices || [],
       deviceCount: (devices || []).length,
     };
@@ -222,21 +115,21 @@ function publicUser(u, extra = {}) {
   return rest;
 }
 
-function setUserPassword(user, password) {
-  const p = String(password || "");
-  user.passwordPlain = p;
-  user.passwordHash = sha256(p);
+async function setUserPassword(user, password) {
+  user.passwordHash = await hashPassword(password);
+  await db.saveUser(user);
 }
 
-function passwordOk(user, password) {
+async function passwordOk(user, password) {
   const p = String(password || "");
-  if (!p) return false;
-  if (user.passwordPlain && p === user.passwordPlain) return true;
-  if (user.passwordHash && sha256(p) === user.passwordHash) {
-    if (!user.passwordPlain) user.passwordPlain = p;
-    return true;
+  if (!p || !user?.passwordHash) return false;
+  const ok = await verifyPassword(p, user.passwordHash);
+  if (!ok) return false;
+  if (!isScryptHash(user.passwordHash)) {
+    user.passwordHash = await hashPassword(p);
+    await db.saveUser(user);
   }
-  return false;
+  return true;
 }
 
 function modelMarked(anomaly) {
@@ -256,8 +149,8 @@ function scoreScale(final) {
   return { exact, ticks, bar: Math.min(100, Math.max(0, ticks)) };
 }
 
-function liveModelMarks() {
-  const scored = runCustomModel(extractFeatures(store)).scored || [];
+async function liveModelMarks() {
+  const scored = runCustomModel(extractFeatures(await db.loadModelStore())).scored || [];
   const map = new Map();
   for (const row of scored) {
     if (row.label === "Фрод" || row.label === "Норма") map.set(row.id, row);
@@ -312,23 +205,21 @@ function publicTx(t) {
   return row;
 }
 
-function publicNotes(email) {
-  return store.notes
-    .filter((n) => n.email === email && n.kind !== "anomaly")
-    .filter((n) => !/мошенн|антифрод|аномал|подозрит/i.test(`${n.title} ${n.body}`))
-    .sort((a, b) => b.createdAt - a.createdAt);
+async function publicNotes(email) {
+  const notes = await db.listNotes(email);
+  return notes
+    .filter((n) => n.kind !== "anomaly")
+    .filter((n) => !/мошенн|антифрод|аномал|подозрит/i.test(`${n.title} ${n.body}`));
 }
 
-function snapshot(email) {
-  const user = store.users[email];
-  const wallet = store.wallets[email];
-  const txs = store.txs.filter((t) => t.email === email).sort((a, b) => b.createdAt - a.createdAt).map(publicTx);
-  const notes = publicNotes(email);
-  const contacts = store.contacts
-    .filter((c) => c.email === email)
-    .sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name, "ru"));
-  const L = limitsOf(email);
-  const usage = usageOf(email);
+async function snapshot(email) {
+  const user = await db.getUser(email);
+  const wallet = await db.getWallet(email);
+  const txs = (await db.listTxsByEmail(email)).map(publicTx);
+  const notes = await publicNotes(email);
+  const contacts = await db.listContacts(email);
+  const L = await limitsOf(email);
+  const usage = await usageOf(email);
   return { user: publicUser(user), wallet: { ...wallet, limits: L, usage }, txs, notes, contacts };
 }
 
@@ -340,37 +231,35 @@ function requestDeviceId(req) {
   return sha256(ua + "|" + ip.split(",")[0]).slice(0, 32);
 }
 
-function issueSession(email, extra = {}) {
+async function issueSession(email, extra = {}) {
   const token = crypto.randomBytes(24).toString("hex");
-  store.sessions[token] = {
+  await db.insertSession(token, {
     email,
     exp: Date.now() + 14 * 86400000,
     deviceId: extra.deviceId || "",
     newDevice: extra.newDevice ? 1 : 0,
     loginAttempts: Math.max(1, Number(extra.loginAttempts) || 1),
-  };
-  saveDb(store);
+  });
   return token;
 }
 
-function sessionOf(req) {
+async function sessionOf(req) {
   const h = req.headers.authorization || "";
   const token = h.startsWith("Bearer ") ? h.slice(7) : "";
-  const s = store.sessions[token];
-  if (!s || s.exp < Date.now()) return null;
-  return s;
+  return db.getSession(token);
 }
 
-function authEmail(req) {
-  return sessionOf(req)?.email || null;
+async function authEmail(req) {
+  return (await sessionOf(req))?.email || null;
 }
 
-function rememberLoginFail(user) {
+async function rememberLoginFail(user) {
   if (!user) return;
   user.loginAttempts = Math.max(1, Number(user.loginAttempts) || 1) + 1;
+  await db.saveUser(user);
 }
 
-function rememberLoginOk(user, deviceId) {
+async function rememberLoginOk(user, deviceId) {
   const attempts = Math.max(1, Number(user.loginAttempts) || 1);
   user.lastLoginAttempts = attempts;
   user.loginAttempts = 1;
@@ -379,15 +268,19 @@ function rememberLoginOk(user, deviceId) {
   const newDevice = deviceId && !known ? 1 : 0;
   if (deviceId && !known) user.devices.push(deviceId);
   if (user.devices.length > 24) user.devices = user.devices.slice(-24);
+  await db.saveUser(user);
   return { attempts, newDevice };
 }
 
 async function scoreOutgoing(email, amount, payee, sess, type = "expense") {
-  const sample = buildFraudSample(store, {
+  const user = await db.getUser(email);
+  const wallet = await db.getWallet(email);
+  const txs = await db.listTxsByEmail(email);
+  const sample = buildFraudSample({ users: { [email]: user }, wallets: { [email]: wallet }, txs }, {
     email,
     amount,
     payee,
-    loginAttempts: sess?.loginAttempts || store.users[email]?.lastLoginAttempts || 1,
+    loginAttempts: sess?.loginAttempts || user?.lastLoginAttempts || 1,
     newDevice: sess?.newDevice || 0,
     type,
   });
@@ -428,39 +321,19 @@ function digits(s) {
 }
 
 function findUserByLogin(login) {
-  const raw = String(login || "").trim();
-  if (!raw) return null;
-  const email = raw.toLowerCase();
-  if (store.users[email]) return store.users[email];
-  const d = ruMobileDigits(raw);
-  if (d.length < 10) return null;
-  return Object.values(store.users).find((u) => {
-    const pd = ruMobileDigits(u.phone);
-    return pd === d || (pd.length >= 10 && pd.slice(-10) === d.slice(-10));
-  }) || null;
+  return db.findUserByLogin(login);
 }
 
 function phoneTaken(phone, exceptEmail) {
-  return Object.values(store.users).some((u) => u.email !== exceptEmail && samePhone(u.phone, phone));
+  return db.phoneTaken(phone, exceptEmail);
 }
 
 function findPayee(query, fromEmail) {
-  const q = String(query || "").trim();
-  if (!q) return null;
-  const qn = q.toLowerCase();
-  const qd = digits(q);
-  return Object.values(store.users).find((u) => {
-    if (u.email === fromEmail) return false;
-    if (u.email === qn) return true;
-    if (u.walletId.toLowerCase() === qn) return true;
-    if (qd.length >= 10 && ruMobileDigits(u.phone).slice(-10) === ruMobileDigits(q).slice(-10)) return true;
-    const full = `${u.lastName} ${u.firstName} ${u.middleName}`.toLowerCase();
-    return full.includes(qn) || u.lastName.toLowerCase() === qn;
-  }) || null;
+  return db.findPayee(query, fromEmail);
 }
 
-function isSelfPayee(fromEmail, query) {
-  const me = store.users[fromEmail];
+async function isSelfPayee(fromEmail, query) {
+  const me = await db.getUser(fromEmail);
   if (!me) return false;
   const q = String(query || "").trim();
   if (!q) return false;
@@ -470,21 +343,21 @@ function isSelfPayee(fromEmail, query) {
   return samePhone(q, me.phone);
 }
 
-function assertNotSelf(fromEmail, query) {
-  if (isSelfPayee(fromEmail, query)) {
+async function assertNotSelf(fromEmail, query) {
+  if (await isSelfPayee(fromEmail, query)) {
     throw new Error("Нельзя перевести деньги самому себе");
   }
 }
 
-function assertNotFrozen(email) {
-  const user = store.users[email];
+async function assertNotFrozen(email) {
+  const user = await db.getUser(email);
   if (user?.frozen) {
     throw new Error("Счёт временно ограничен. Операции недоступны, обратитесь в поддержку.");
   }
 }
 
-function freezeAccount(email, reason, extra = {}) {
-  const user = store.users[email];
+async function freezeAccount(email, reason, extra = {}) {
+  const user = await db.getUser(email);
   if (!user) return false;
   const why = String(reason || "Подозрение на мошенничество").trim();
   const already = Boolean(user.frozen);
@@ -493,164 +366,150 @@ function freezeAccount(email, reason, extra = {}) {
   user.frozenAt = Date.now();
   user.frozenBy = extra.by || "antifraud";
   if (extra.txId) user.frozenTxId = extra.txId;
-  if (!already) addNote(email, "Счёт временно ограничен", "Операции недоступны. При необходимости напишите в поддержку.", "system", extra.txId ? { txId: extra.txId } : {});
-  audit("user.freeze", { email, reason: why, by: user.frozenBy, txId: extra.txId || "" });
+  await db.saveUser(user);
+  if (!already) await addNote(email, "Счёт временно ограничен", "Операции недоступны. При необходимости напишите в поддержку.", "system", extra.txId ? { txId: extra.txId } : {});
+  await audit("user.freeze", { email, reason: why, by: user.frozenBy, txId: extra.txId || "" });
   return !already;
 }
 
-function unfreezeAccount(email) {
-  const user = store.users[email];
+async function unfreezeAccount(email) {
+  const user = await db.getUser(email);
   if (!user) return false;
   user.frozen = false;
   user.freezeReason = "";
   user.frozenBy = "";
   user.frozenTxId = "";
-  addNote(email, "Счёт снова доступен", "Ограничения сняты.", "system");
-  audit("user.unfreeze", { email });
+  await db.saveUser(user);
+  await addNote(email, "Счёт снова доступен", "Ограничения сняты.", "system");
+  await audit("user.unfreeze", { email });
   return true;
 }
 
-function holdTx(tx, reason, extra = {}) {
+async function holdTx(tx, reason, extra = {}) {
   if (!tx || tx.status === "held" || tx.status === "rejected") return;
   tx.status = "held";
   tx.freezeReason = reason;
   tx.heldAt = Date.now();
   tx.heldBy = extra.by || "antifraud";
-  addNote(tx.email, "Операция в обработке", `${tx.name}: ${Math.abs(tx.amount).toLocaleString("ru-RU")} ₽`, "transfer", { txId: tx.id });
-  audit("tx.hold", { email: tx.email, txId: tx.id, reason, by: tx.heldBy });
+  await db.saveTx(tx);
+  await addNote(tx.email, "Операция в обработке", `${tx.name}: ${Math.abs(tx.amount).toLocaleString("ru-RU")} ₽`, "transfer", { txId: tx.id });
+  await audit("tx.hold", { email: tx.email, txId: tx.id, reason, by: tx.heldBy });
 }
 
-function creditPayeeFromHeld(tx) {
+async function creditPayeeFromHeld(tx) {
   const query = tx.holdQuery || tx.counterparty || tx.name;
-  const other = findPayee(query, tx.email);
+  const other = await findPayee(query, tx.email);
   if (!other) return null;
   const abs = Math.abs(tx.amount);
-  const inTx = addTx(other.email, {
-    name: `${store.users[tx.email].lastName} ${store.users[tx.email].firstName}`.trim() || "Перевод",
+  const sender = await db.getUser(tx.email);
+  const inTx = await addTx(other.email, {
+    name: `${sender.lastName} ${sender.firstName}`.trim() || "Перевод",
     amount: abs,
     type: "income",
     icon: "person",
     category: "Переводы",
     comment: tx.comment || "После проверки антифрода",
-    counterparty: store.users[tx.email].phone || tx.email,
+    counterparty: sender.phone || tx.email,
     linkedTxId: tx.id,
   });
-  addNote(other.email, "Перевод получен", `${store.users[tx.email].firstName} отправил ${abs.toLocaleString("ru-RU")} ₽`, "transfer", { txId: inTx.id });
+  await addNote(other.email, "Перевод получен", `${sender.firstName} отправил ${abs.toLocaleString("ru-RU")} ₽`, "transfer", { txId: inTx.id });
   tx.linkedTxId = inTx.id;
+  await db.saveTx(tx);
   return inTx;
 }
 
-function releaseHeldTx(tx, by = "admin") {
+async function releaseHeldTx(tx, by = "admin") {
   if (!tx || tx.status !== "held") throw new Error("Операция не заморожена");
-  if (tx.amount < 0 && !tx.linkedTxId) creditPayeeFromHeld(tx);
+  if (tx.amount < 0 && !tx.linkedTxId) await creditPayeeFromHeld(tx);
   tx.status = "done";
   tx.freezeReason = "";
   tx.reviewedAt = Date.now();
   tx.reviewedBy = by;
-  addNote(tx.email, "Операция выполнена", `${tx.name}: ${Math.abs(tx.amount).toLocaleString("ru-RU")} ₽`, "transfer", { txId: tx.id });
-  audit("tx.release", { email: tx.email, txId: tx.id, by });
+  await db.saveTx(tx);
+  await addNote(tx.email, "Операция выполнена", `${tx.name}: ${Math.abs(tx.amount).toLocaleString("ru-RU")} ₽`, "transfer", { txId: tx.id });
+  await audit("tx.release", { email: tx.email, txId: tx.id, by });
 }
 
-function rejectHeldTx(tx, by = "admin") {
+async function rejectHeldTx(tx, by = "admin") {
   if (!tx || tx.status !== "held") throw new Error("Операция не заморожена");
   const abs = Math.abs(tx.amount);
-  if (tx.status === "held") {
-    if (tx.amount < 0) {
-      addTx(tx.email, {
-        name: "Возврат заморозки",
-        amount: abs,
-        type: "income",
-        icon: "undo",
-        category: "Служебное",
-        comment: `Возврат ${tx.id}`,
-        counterparty: "Антифрод",
-        linkedTxId: tx.id,
-      });
-    } else {
-      addTx(tx.email, {
-        name: "Отмена заморозки",
-        amount: -abs,
-        type: "expense",
-        icon: "block",
-        category: "Служебное",
-        comment: `Отмена ${tx.id}`,
-        counterparty: "Антифрод",
-        linkedTxId: tx.id,
-      });
-    }
+  if (tx.amount < 0) {
+    await addTx(tx.email, {
+      name: "Возврат заморозки",
+      amount: abs,
+      type: "income",
+      icon: "undo",
+      category: "Служебное",
+      comment: `Возврат ${tx.id}`,
+      counterparty: "Антифрод",
+      linkedTxId: tx.id,
+    });
+  } else {
+    await addTx(tx.email, {
+      name: "Отмена заморозки",
+      amount: -abs,
+      type: "expense",
+      icon: "block",
+      category: "Служебное",
+      comment: `Отмена ${tx.id}`,
+      counterparty: "Антифрод",
+      linkedTxId: tx.id,
+    });
   }
   tx.status = "rejected";
   tx.freezeReason = "Отклонено администратором как мошенничество";
   tx.reviewedAt = Date.now();
   tx.reviewedBy = by;
-  addNote(tx.email, "Операция отменена", `${tx.name}: ${abs.toLocaleString("ru-RU")} ₽ возвращены`, "transfer", { txId: tx.id });
-  audit("tx.reject", { email: tx.email, txId: tx.id, by });
+  await db.saveTx(tx);
+  await addNote(tx.email, "Операция отменена", `${tx.name}: ${abs.toLocaleString("ru-RU")} ₽ возвращены`, "transfer", { txId: tx.id });
+  await audit("tx.reject", { email: tx.email, txId: tx.id, by });
 }
 
 function audit(action, detail) {
-  store.audit = store.audit || [];
-  store.audit.unshift({
-    id: uid("a-"),
-    action,
-    detail: detail || {},
-    at: Date.now(),
-  });
-  store.audit = store.audit.slice(0, 500);
+  return db.insertAudit(uid("a-"), action, detail || {}, Date.now());
 }
 
-function codeKey(purpose, email) {
-  return `${purpose}:${String(email || "").toLowerCase()}`;
-}
-
-function putCode(purpose, email, channel, dest) {
+async function putCode(purpose, email, channel, dest) {
   const code = String(Math.floor(100000 + Math.random() * 900000));
-  const key = codeKey(purpose, email);
-  const prev = store.codes[key];
+  const prev = await db.getCode(purpose, email);
   if (prev && Date.now() - (prev.sentAt || 0) < 40000) {
     const wait = Math.ceil((40000 - (Date.now() - prev.sentAt)) / 1000);
     throw new Error(`Подождите ${wait} с перед повторной отправкой`);
   }
-  store.codes[key] = { code, exp: Date.now() + CODE_TTL, channel, dest, sentAt: Date.now(), purpose };
-  saveDb(store);
-  return store.codes[key];
+  const rec = { code, exp: Date.now() + CODE_TTL, channel, dest, sentAt: Date.now(), purpose };
+  await db.saveCode(purpose, email, rec);
+  return rec;
 }
 
-function takeCode(purpose, email, code) {
-  const key = codeKey(purpose, email);
-  const rec = store.codes[key];
+async function takeCode(purpose, email, code) {
+  const rec = await db.getCode(purpose, email);
   const got = String(code || "").trim();
   if (!rec || rec.exp < Date.now()) return false;
-  if (rec.bypass) {
-    delete store.codes[key];
-    saveDb(store);
+  if (rec.bypass || rec.code === got) {
+    await db.deleteCode(purpose, email);
     return true;
   }
-  if (rec.code !== got) return false;
-  delete store.codes[key];
-  saveDb(store);
-  return true;
+  return false;
 }
 
 function lastCodeFor(email) {
-  const rows = ["login", "register", "pay", "reset"].map((p) => store.codes[codeKey(p, email)]).filter(Boolean);
-  rows.sort((a, b) => (b.sentAt || 0) - (a.sentAt || 0));
-  return rows[0]?.code;
+  return db.lastCodeFor(email);
 }
 
 function needPayOtp(email, amount) {
   return amount > PAY_OTP_LIMIT && email !== DEMO_EMAIL;
 }
 
-function assertPayCode(email, amount, code) {
+async function assertPayCode(email, amount, code) {
   if (!needPayOtp(email, amount)) return true;
-  if (!takeCode("pay", email, code)) {
+  if (!(await takeCode("pay", email, code))) {
     throw new Error("Для платежа свыше 10 000 ₽ нужен актуальный код из СМС или письма");
   }
   return true;
 }
 
 function addNote(email, title, body, kind = "transfer", extra = {}) {
-  store.notes.push({
+  return db.insertNote({
     id: uid("n-"),
     email,
     title,
@@ -662,10 +521,12 @@ function addNote(email, title, body, kind = "transfer", extra = {}) {
   });
 }
 
-function addTx(email, partial) {
-  const wallet = store.wallets[email];
-  const nextBal = Math.round((wallet.balance + partial.amount) * 100) / 100;
+async function addTx(email, partial) {
+  const wallet = await db.lockWallet(email);
+  const nextBal = Math.round((Number(wallet.balance) + Number(partial.amount)) * 100) / 100;
+  if (partial.amount < 0 && nextBal < -0.001) throw new Error("Недостаточно средств");
   wallet.balance = nextBal;
+  await db.saveWallet(wallet);
   const row = {
     id: uid("t-"),
     email,
@@ -675,7 +536,7 @@ function addTx(email, partial) {
     comment: "",
     ...partial,
   };
-  store.txs.push(row);
+  await db.insertTx(row);
   return row;
 }
 
@@ -777,19 +638,19 @@ const server = http.createServer(async (req, res) => {
         const b = await readBody(req);
         const purpose = ["login", "register", "pay"].includes(b.purpose) ? b.purpose : "login";
         const channel = b.channel === "email" || b.channel === "sms" ? b.channel : "";
-        const authed = authEmail(req);
+        const authed = await authEmail(req);
 
         if (purpose === "pay") {
           if (!authed) return send(res, 401, { error: "Нужна авторизация" });
-          try { assertNotFrozen(authed); } catch (e) { return send(res, 403, { error: e.message }); }
+          try { await assertNotFrozen(authed); } catch (e) { return send(res, 403, { error: e.message }); }
           const amount = Number(b.amount);
           if (!needPayOtp(authed, amount)) {
             return send(res, 200, { ok: true, via: "skip", masked: "" });
           }
-          const user = store.users[authed];
+          const user = await db.getUser(authed);
           const ch = channel || user.otpChannel || "sms";
           try {
-            const rec = putCode("pay", authed, ch, ch === "email" ? user.email : user.phone);
+            const rec = await putCode("pay", authed, ch, ch === "email" ? user.email : user.phone);
             console.log(`[код pay] ${authed} → ${rec.code} (${ch})`);
             res.otpJob = { channel: ch, phone: user.phone, email: user.email, code: rec.code, purpose: "pay", owner: authed };
           } catch (e) {
@@ -803,11 +664,11 @@ const server = http.createServer(async (req, res) => {
           const phone = String(b.phone || "").trim();
           if (!EMAIL_OK.test(email)) return send(res, 400, { error: "Укажите настоящую почту" });
           if (!isRuMobile(phone)) return send(res, 400, { error: "Укажите российский мобильный (+7, 8 или 9…)" });
-          if (store.users[email]) return send(res, 400, { error: "Такой email уже зарегистрирован" });
-          if (phoneTaken(phone, email)) return send(res, 400, { error: "Этот номер телефона уже занят" });
+          if (await db.getUser(email)) return send(res, 400, { error: "Такой email уже зарегистрирован" });
+          if (await phoneTaken(phone, email)) return send(res, 400, { error: "Этот номер телефона уже занят" });
           const ch = channel || "sms";
           try {
-            const rec = putCode("register", email, ch, ch === "email" ? email : phone);
+            const rec = await putCode("register", email, ch, ch === "email" ? email : phone);
             console.log(`[код register] ${email} / ${phone} → ${rec.code} (${ch})`);
             res.otpJob = { channel: ch, phone: formatRuPhone(phone), email, code: rec.code, purpose: "register", owner: email };
           } catch (e) {
@@ -816,17 +677,16 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        const user = findUserByLogin(b.login || b.email);
+        const user = await findUserByLogin(b.login || b.email);
         if (!user) return send(res, 400, { error: "Пользователь с такой почтой или телефоном не найден" });
-        if (purpose === "login" && !passwordOk(user, b.password)) {
-          rememberLoginFail(user);
-          saveDb(store);
+        if (purpose === "login" && !(await passwordOk(user, b.password))) {
+          await rememberLoginFail(user);
           return send(res, 400, { error: "Неверный пароль" });
         }
         if (user.email === DEMO_EMAIL) return send(res, 200, { ok: true, via: "demo", masked: "демо" });
         const ch = channel || user.otpChannel || "sms";
         try {
-          const rec = putCode("login", user.email, ch, ch === "email" ? user.email : user.phone);
+          const rec = await putCode("login", user.email, ch, ch === "email" ? user.email : user.phone);
           console.log(`[код login] ${user.email} / ${user.phone} → ${rec.code} (${ch})`);
           res.otpJob = { channel: ch, phone: user.phone, email: user.email, code: rec.code, purpose: "login", owner: user.email };
         } catch (e) {
@@ -844,16 +704,15 @@ const server = http.createServer(async (req, res) => {
         if (email.endsWith(".demo") && email !== DEMO_EMAIL) return send(res, 400, { error: "Нужна реальная почта, не демо-домен" });
         if (!isRuMobile(phone)) return send(res, 400, { error: "Укажите российский мобильный (+7, 8 или 9…)" });
         if (!email || password.length < 8) return send(res, 400, { error: "Укажите email и пароль от 8 символов" });
-        if (store.users[email]) return send(res, 400, { error: "Такой email уже зарегистрирован" });
-        if (phoneTaken(phone, email)) return send(res, 400, { error: "Этот номер телефона уже занят" });
-        if (!takeCode("register", email, b.code)) {
+        if (await db.getUser(email)) return send(res, 400, { error: "Такой email уже зарегистрирован" });
+        if (await phoneTaken(phone, email)) return send(res, 400, { error: "Этот номер телефона уже занят" });
+        if (!(await takeCode("register", email, b.code))) {
           return send(res, 400, { error: "Подтвердите регистрацию кодом из СМС или письма" });
         }
         const deviceId = requestDeviceId(req);
-        store.users[email] = {
+        await db.insertUser({
           email,
-          passwordHash: sha256(password),
-          passwordPlain: password,
+          passwordHash: await hashPassword(password),
           lastName: String(b.lastName || "").trim(),
           firstName: String(b.firstName || "").trim(),
           middleName: String(b.middleName || "").trim(),
@@ -865,8 +724,8 @@ const server = http.createServer(async (req, res) => {
           loginAttempts: 1,
           lastLoginAttempts: 1,
           devices: deviceId ? [deviceId] : [],
-        };
-        store.wallets[email] = {
+        });
+        await db.insertWallet({
           email,
           balance: 0,
           savings: [],
@@ -874,45 +733,43 @@ const server = http.createServer(async (req, res) => {
           pin: "1234",
           hideBalance: false,
           limits: defaultLimits(),
-        };
-        addNote(email, "Кошелёк создан", "Баланс 0 ₽. Пополните кошелёк, чтобы отправлять переводы.", "system");
-        const token = issueSession(email, { deviceId, newDevice: 1, loginAttempts: 1 });
-        send(res, 200, { token, ...snapshot(email) });
+        });
+        await addNote(email, "Кошелёк создан", "Баланс 0 ₽. Пополните кошелёк, чтобы отправлять переводы.", "system");
+        const token = await issueSession(email, { deviceId, newDevice: 1, loginAttempts: 1 });
+        send(res, 200, { token, ...(await snapshot(email)) });
         return;
       }
 
       if (req.method === "POST" && p === "/api/auth/login") {
         const b = await readBody(req);
-        const user = findUserByLogin(b.email || b.login);
+        const user = await findUserByLogin(b.email || b.login);
         if (!user) return send(res, 400, { error: "Пользователь не найден" });
-        if (!passwordOk(user, b.password)) {
-          rememberLoginFail(user);
-          saveDb(store);
+        if (!(await passwordOk(user, b.password))) {
+          await rememberLoginFail(user);
           return send(res, 400, { error: "Неверный пароль" });
         }
         if (user.email !== DEMO_EMAIL) {
-          if (!takeCode("login", user.email, b.code)) {
-            rememberLoginFail(user);
-            saveDb(store);
+          if (!(await takeCode("login", user.email, b.code))) {
+            await rememberLoginFail(user);
             return send(res, 400, { error: "Неверный или просроченный код из СМС или письма" });
           }
         }
         const deviceId = requestDeviceId(req);
-        const ok = rememberLoginOk(user, deviceId);
-        const token = issueSession(user.email, { deviceId, newDevice: ok.newDevice, loginAttempts: ok.attempts });
-        send(res, 200, { token, ...snapshot(user.email) });
+        const ok = await rememberLoginOk(user, deviceId);
+        const token = await issueSession(user.email, { deviceId, newDevice: ok.newDevice, loginAttempts: ok.attempts });
+        send(res, 200, { token, ...(await snapshot(user.email)) });
         return;
       }
 
       if (req.method === "POST" && p === "/api/auth/forgot") {
         const b = await readBody(req);
-        const user = findUserByLogin(b.login || b.email || b.phone);
+        const user = await findUserByLogin(b.login || b.email || b.phone);
         if (!user) return send(res, 400, { error: "Пользователь с такой почтой или телефоном не найден" });
         if (user.frozen) return send(res, 403, { error: "Счёт заблокирован. Обратитесь в поддержку." });
         if (user.email === DEMO_EMAIL) return send(res, 200, { ok: true, via: "demo", masked: "демо" });
         const ch = b.channel === "sms" ? "sms" : "email";
         try {
-          const rec = putCode("reset", user.email, ch, ch === "sms" ? user.phone : user.email);
+          const rec = await putCode("reset", user.email, ch, ch === "sms" ? user.phone : user.email);
           console.log(`[код reset] ${user.email} → ${rec.code} (${ch})`);
           res.otpJob = { channel: ch, phone: user.phone, email: user.email, code: rec.code, purpose: "reset", owner: user.email };
         } catch (e) {
@@ -923,18 +780,18 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === "POST" && p === "/api/auth/reset") {
         const b = await readBody(req);
-        const user = findUserByLogin(b.login || b.email);
+        const user = await findUserByLogin(b.login || b.email);
         const password = String(b.password || "");
         if (!user) return send(res, 400, { error: "Пользователь не найден" });
         if (password.length < 8) return send(res, 400, { error: "Новый пароль от 8 символов" });
-        if (user.email !== DEMO_EMAIL && !takeCode("reset", user.email, b.code)) {
+        if (user.email !== DEMO_EMAIL && !(await takeCode("reset", user.email, b.code))) {
           return send(res, 400, { error: "Неверный или просроченный код из письма" });
         }
-        setUserPassword(user, password);
+        await setUserPassword(user, password);
         const deviceId = requestDeviceId(req);
-        const ok = rememberLoginOk(user, deviceId);
-        const token = issueSession(user.email, { deviceId, newDevice: ok.newDevice, loginAttempts: ok.attempts });
-        send(res, 200, { token, ...snapshot(user.email) });
+        const ok = await rememberLoginOk(user, deviceId);
+        const token = await issueSession(user.email, { deviceId, newDevice: ok.newDevice, loginAttempts: ok.attempts });
+        send(res, 200, { token, ...(await snapshot(user.email)) });
         return;
       }
 
@@ -947,7 +804,7 @@ const server = http.createServer(async (req, res) => {
         }
         if (req.method === "PATCH" && p === "/api/admin/notify") {
           const b = await readBody(req);
-          send(res, 200, saveNotify(b));
+          send(res, 200, await saveNotify(b));
           return;
         }
         if (req.method === "POST" && p === "/api/admin/notify/test") {
@@ -969,85 +826,72 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         if (req.method === "GET" && p === "/api/admin/overview") {
-          const users = Object.values(store.users);
-          const wallets = Object.values(store.wallets);
-          const txs = store.txs || [];
-          const dayAgo = Date.now() - 86400000;
-          const weekAgo = Date.now() - 7 * 86400000;
           send(res, 200, {
-            users: users.length,
-            frozen: users.filter((u) => u.frozen).length,
-            totalBalance: wallets.reduce((s, w) => s + (w.balance || 0), 0),
-            txCount: txs.length,
-            volumeOut: txs.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0),
-            volumeIn: txs.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0),
-            txToday: txs.filter((t) => t.createdAt >= dayAgo).length,
-            newWeek: users.filter((u) => (u.createdAt || 0) >= weekAgo).length,
+            ...(await db.overview()),
             notify: publicNotify(),
-            audit: (store.audit || []).slice(0, 30),
+            audit: await db.recentAudit(30),
           });
           return;
         }
         if (req.method === "GET" && p === "/api/admin/txs") {
           const q = String(url.searchParams.get("q") || "").toLowerCase();
           const type = String(url.searchParams.get("type") || "");
-          let rows = (store.txs || []).slice().sort((a, b) => b.createdAt - a.createdAt);
-          if (type === "in") rows = rows.filter((t) => t.amount > 0);
-          if (type === "out") rows = rows.filter((t) => t.amount < 0);
-          if (type === "held") rows = rows.filter((t) => t.status === "held");
-          if (type === "rejected") rows = rows.filter((t) => t.status === "rejected");
-          if (q) {
-            rows = rows.filter((t) => `${t.email} ${t.name} ${t.counterparty} ${t.category}`.toLowerCase().includes(q));
-          }
-          const marks = liveModelMarks();
-          send(res, 200, { txs: rows.slice(0, 300).map((t) => decorateAdminTx(t, marks)), total: rows.length });
+          const listed = await db.adminTxs({ q, type });
+          const marks = await liveModelMarks();
+          send(res, 200, { txs: listed.txs.map((t) => decorateAdminTx(t, marks)), total: listed.total });
           return;
         }
         const txAct = p.match(/^\/api\/admin\/txs\/([^/]+)\/(hold|release|reject)$/);
         if (txAct && req.method === "POST") {
           const txId = decodeURIComponent(txAct[1]);
           const op = txAct[2];
-          const tx = (store.txs || []).find((t) => t.id === txId);
+          const tx = await db.getTx(txId);
           if (!tx) return send(res, 404, { error: "Нет операции" });
           const b = await readBody(req).catch(() => ({}));
           try {
             if (op === "hold") {
               const reason = String(b.reason || "Заморозка администратором: подозрение на мошенничество");
-              if (tx.status !== "held") holdTx(tx, reason, { by: "admin" });
-              freezeAccount(tx.email, reason, { txId: tx.id, by: "admin" });
+              if (tx.status !== "held") await holdTx(tx, reason, { by: "admin" });
+              await freezeAccount(tx.email, reason, { txId: tx.id, by: "admin" });
             }
-            if (op === "release") releaseHeldTx(tx, "admin");
-            if (op === "reject") rejectHeldTx(tx, "admin");
+            if (op === "release") await releaseHeldTx(tx, "admin");
+            if (op === "reject") await rejectHeldTx(tx, "admin");
           } catch (e) {
             return send(res, 400, { error: e.message });
           }
-          saveDb(store);
-          send(res, 200, { ok: true, tx });
+          send(res, 200, { ok: true, tx: await db.getTx(txId) });
           return;
         }
         if (req.method === "GET" && p === "/api/admin/ml") {
-          send(res, 200, buildReport(store, { horizonDays: Number(url.searchParams.get("horizon") || 7) }));
+          send(res, 200, buildReport(await db.loadModelStore(), { horizonDays: Number(url.searchParams.get("horizon") || 7) }));
           return;
         }
         if (req.method === "GET" && p === "/api/admin/ml/features") {
-          send(res, 200, extractFeatures(store));
+          send(res, 200, extractFeatures(await db.loadModelStore()));
           return;
         }
         if (req.method === "GET" && p === "/api/admin/export") {
           const kind = String(url.searchParams.get("kind") || "users");
-          if (kind === "txs") send(res, 200, { rows: store.txs || [] });
-          else if (kind === "audit") send(res, 200, { rows: store.audit || [] });
-          else send(res, 200, { rows: Object.values(store.users).map((u) => ({ ...publicUser(u), balance: store.wallets[u.email]?.balance || 0 })) });
+          if (kind === "txs") send(res, 200, { rows: await db.exportTxs() });
+          else if (kind === "audit") send(res, 200, { rows: await db.exportAudit() });
+          else {
+            const rows = await db.listUsersAdmin();
+            send(res, 200, { rows: rows.map((u) => ({ ...publicUser(u, { admin: true }), balance: u.balance || 0 })) });
+          }
           return;
         }
         if (req.method === "GET" && p === "/api/admin/users") {
-          const users = Object.values(store.users).map((u) => ({
-            ...publicUser(u, { admin: true }),
-            balance: store.wallets[u.email]?.balance || 0,
-            txCount: store.txs.filter((t) => t.email === u.email).length,
-            lastCode: lastCodeFor(u.email),
-            sessions: Object.values(store.sessions).filter((s) => s.email === u.email).length,
-          }));
+          const rows = await db.listUsersAdmin();
+          const users = [];
+          for (const u of rows) {
+            users.push({
+              ...publicUser(u, { admin: true }),
+              balance: u.balance || 0,
+              txCount: u.txCount,
+              lastCode: await lastCodeFor(u.email),
+              sessions: await db.countSessions(u.email),
+            });
+          }
           send(res, 200, { users });
           return;
         }
@@ -1055,23 +899,23 @@ const server = http.createServer(async (req, res) => {
         if (freeze && req.method === "POST") {
           const email = decodeURIComponent(freeze[1]).toLowerCase();
           const op = freeze[2];
-          const user = store.users[email];
+          const user = await db.getUser(email);
           if (!user) return send(res, 404, { error: "Нет пользователя" });
           const b = await readBody(req).catch(() => ({}));
           if (op === "freeze") {
-            freezeAccount(email, String(b.reason || "Блокировка администратором"), { by: "admin" });
+            await freezeAccount(email, String(b.reason || "Блокировка администратором"), { by: "admin" });
           }
           if (op === "unfreeze") {
-            unfreezeAccount(email);
+            await unfreezeAccount(email);
           }
           if (op === "kick") {
-            for (const [k, s] of Object.entries(store.sessions)) if (s.email === email) delete store.sessions[k];
-            audit("user.kick", { email });
+            await db.deleteUserSessions(email);
+            await audit("user.kick", { email });
           }
           if (op === "adjust") {
             const amount = Number(b.amount);
             if (!Number.isFinite(amount) || !amount) return send(res, 400, { error: "Укажите сумму корректировки" });
-            addTx(email, {
+            await addTx(email, {
               name: amount > 0 ? "Корректировка +" : "Корректировка −",
               amount,
               type: amount > 0 ? "income" : "expense",
@@ -1080,43 +924,36 @@ const server = http.createServer(async (req, res) => {
               comment: String(b.comment || "Администратор"),
               counterparty: "Админ",
             });
-            audit("user.adjust", { email, amount, comment: b.comment || "" });
+            await audit("user.adjust", { email, amount, comment: b.comment || "" });
           }
           if (op === "password") {
             const password = String(b.password || "");
             if (password.length < 8) return send(res, 400, { error: "Пароль от 8 символов" });
-            setUserPassword(user, password);
-            audit("user.password", { email });
+            await setUserPassword(user, password);
+            await audit("user.password", { email });
           }
-          saveDb(store);
-          send(res, 200, { ok: true, user: publicUser(store.users[email], { admin: true }), wallet: store.wallets[email] });
+          send(res, 200, { ok: true, user: publicUser(await db.getUser(email), { admin: true }), wallet: await db.getWallet(email) });
           return;
         }
         const one = p.match(/^\/api\/admin\/users\/([^/]+)$/);
         if (one) {
           const email = decodeURIComponent(one[1]).toLowerCase();
-          const user = store.users[email];
+          const user = await db.getUser(email);
           if (!user) return send(res, 404, { error: "Нет пользователя" });
           if (req.method === "GET") {
-            const marks = liveModelMarks();
+            const marks = await liveModelMarks();
+            const wallet = await db.getWallet(email);
             send(res, 200, {
-              user: { ...publicUser(user, { admin: true }), lastCode: lastCodeFor(email), balance: store.wallets[email]?.balance || 0, txCount: 0 },
-              wallet: store.wallets[email],
-              txs: store.txs.filter((t) => t.email === email).sort((a, b) => b.createdAt - a.createdAt).map((t) => decorateAdminTx(t, marks)),
-              contacts: store.contacts.filter((c) => c.email === email),
-              notes: store.notes.filter((n) => n.email === email),
+              user: { ...publicUser(user, { admin: true }), lastCode: await lastCodeFor(email), balance: wallet?.balance || 0, txCount: await db.countTxs(email) },
+              wallet,
+              txs: (await db.listTxsByEmail(email)).map((t) => decorateAdminTx(t, marks)),
+              contacts: await db.listContacts(email),
+              notes: await db.listNotes(email),
             });
             return;
           }
           if (req.method === "DELETE") {
-            delete store.users[email];
-            delete store.wallets[email];
-            delete store.codes[email];
-            store.txs = store.txs.filter((t) => t.email !== email);
-            store.notes = store.notes.filter((n) => n.email !== email);
-            store.contacts = store.contacts.filter((c) => c.email !== email);
-            for (const [k, s] of Object.entries(store.sessions)) if (s.email === email) delete store.sessions[k];
-            saveDb(store);
+            await db.deleteUser(email);
             send(res, 200, { ok: true });
             return;
           }
@@ -1126,32 +963,25 @@ const server = http.createServer(async (req, res) => {
             if (b.email) {
               nextEmail = String(b.email).trim().toLowerCase();
               if (!EMAIL_OK.test(nextEmail)) return send(res, 400, { error: "Некорректная почта" });
-              if (nextEmail !== email && store.users[nextEmail]) return send(res, 400, { error: "Почта занята" });
+              if (nextEmail !== email && await db.getUser(nextEmail)) return send(res, 400, { error: "Почта занята" });
             }
             if (b.phone) {
               if (!isRuMobile(b.phone)) return send(res, 400, { error: "Некорректный телефон" });
-              if (phoneTaken(b.phone, email)) return send(res, 400, { error: "Телефон занят" });
+              if (await phoneTaken(b.phone, email)) return send(res, 400, { error: "Телефон занят" });
               user.phone = formatRuPhone(b.phone);
             }
+            const wallet = await db.getWallet(email);
             if (typeof b.balance === "number" && Number.isFinite(b.balance)) {
-              store.wallets[email].balance = Math.max(0, b.balance);
+              wallet.balance = Math.max(0, b.balance);
+              await db.saveWallet(wallet);
             }
             if (typeof b.password === "string" && b.password.trim()) {
               if (b.password.trim().length < 8) return send(res, 400, { error: "Пароль от 8 символов" });
-              setUserPassword(user, b.password.trim());
+              user.passwordHash = await hashPassword(b.password.trim());
             }
-            if (nextEmail !== email) {
-              store.users[nextEmail] = { ...user, email: nextEmail };
-              delete store.users[email];
-              store.wallets[nextEmail] = { ...store.wallets[email], email: nextEmail };
-              delete store.wallets[email];
-              store.txs.forEach((t) => { if (t.email === email) t.email = nextEmail; });
-              store.notes.forEach((n) => { if (n.email === email) n.email = nextEmail; });
-              store.contacts.forEach((c) => { if (c.email === email) c.email = nextEmail; });
-              if (store.codes[email]) { store.codes[nextEmail] = store.codes[email]; delete store.codes[email]; }
-            }
-            saveDb(store);
-            audit("user.patch", { email, nextEmail, balance: b.balance, phone: b.phone });
+            await db.saveUser(user);
+            if (nextEmail !== email) await db.renameUser(email, nextEmail);
+            await audit("user.patch", { email, nextEmail, balance: b.balance, phone: b.phone });
             send(res, 200, { ok: true, email: nextEmail });
             return;
           }
@@ -1163,13 +993,12 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "POST" && p === "/api/auth/logout") {
         const h = req.headers.authorization || "";
         const token = h.startsWith("Bearer ") ? h.slice(7) : "";
-        delete store.sessions[token];
-        saveDb(store);
+        await db.deleteSession(token);
         send(res, 200, { ok: true });
         return;
       }
 
-      const sess = sessionOf(req);
+      const sess = await sessionOf(req);
       const email = sess?.email || null;
       if (p.startsWith("/api/") && !email) {
         send(res, 401, { error: "Нужна авторизация" });
@@ -1177,7 +1006,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (req.method === "GET" && (p === "/api/me" || p === "/api/state")) {
-        send(res, 200, snapshot(email));
+        send(res, 200, await snapshot(email));
         return;
       }
 
@@ -1186,18 +1015,19 @@ const server = http.createServer(async (req, res) => {
         const amount = Number(b.amount);
         const payee = String(b.payee || "").trim();
         const comment = String(b.comment || "").trim();
-        const wallet = store.wallets[email];
+        const wallet = await db.getWallet(email);
+        const me = await db.getUser(email);
         if (!(amount > 0)) return send(res, 400, { error: "Укажите сумму" });
         if (!payee) return send(res, 400, { error: "Укажите получателя" });
-        try { assertNotFrozen(email); assertNotSelf(email, payee); assertLimits(email, amount); } catch (e) { return send(res, 400, { error: e.message }); }
+        try { await assertNotFrozen(email); await assertNotSelf(email, payee); await assertLimits(email, amount); } catch (e) { return send(res, 400, { error: e.message }); }
         if (amount > wallet.balance) return send(res, 400, { error: "Недостаточно средств" });
-        try { assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
+        try { await assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
         const fraud = await scoreOutgoing(email, amount, payee, sess, "expense");
         if (modelBlocks(fraud)) {
           console.warn("[ml] transfer blocked", { email, anomaly: fraud.anomaly, final_score: fraud.final_score });
           return send(res, 400, { error: clientBlockedMsg() });
         }
-        const outTx = addTx(email, {
+        const outTx = await addTx(email, {
           name: isRuMobile(payee) ? formatRuPhone(payee) : payee,
           amount: -amount,
           type: "expense",
@@ -1208,38 +1038,38 @@ const server = http.createServer(async (req, res) => {
           holdQuery: payee,
           ...mlPatch(fraud),
         });
-        addNote(email, "Списание", `${payee}: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: outTx.id });
-        const other = findPayee(payee, email);
+        await addNote(email, "Списание", `${payee}: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: outTx.id });
+        const other = await findPayee(payee, email);
         if (other) {
-          const inTx = addTx(other.email, {
-            name: `${store.users[email].lastName} ${store.users[email].firstName}`.trim(),
+          const inTx = await addTx(other.email, {
+            name: `${me.lastName} ${me.firstName}`.trim(),
             amount,
             type: "income",
             icon: "person",
             category: "Переводы",
             comment,
-            counterparty: store.users[email].phone || email,
+            counterparty: me.phone || email,
             linkedTxId: outTx.id,
           });
           outTx.linkedTxId = inTx.id;
-          addNote(other.email, "Перевод получен", `${store.users[email].firstName} отправил ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: inTx.id });
+          await db.saveTx(outTx);
+          await addNote(other.email, "Перевод получен", `${me.firstName} отправил ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: inTx.id });
         }
-        saveDb(store);
-        send(res, 200, snapshot(email));
+        send(res, 200, await snapshot(email));
         return;
       }
 
       if (req.method === "POST" && p === "/api/topup") {
         const b = await readBody(req);
         const amount = Number(b.amount);
-        try { assertNotFrozen(email); } catch (e) { return send(res, 400, { error: e.message }); }
+        try { await assertNotFrozen(email); } catch (e) { return send(res, 400, { error: e.message }); }
         if (!(amount > 0)) return send(res, 400, { error: "Укажите сумму" });
         const fraud = await scoreOutgoing(email, amount, "Альфа-Банк", sess, "income");
         if (modelBlocks(fraud)) {
           console.warn("[ml] topup blocked", { email, anomaly: fraud.anomaly, final_score: fraud.final_score });
           return send(res, 400, { error: clientBlockedMsg() });
         }
-        const inTx = addTx(email, {
+        const inTx = await addTx(email, {
           name: "Пополнение",
           amount,
           type: "income",
@@ -1249,31 +1079,31 @@ const server = http.createServer(async (req, res) => {
           counterparty: "Альфа-Банк",
           ...mlPatch(fraud),
         });
-        addNote(email, "Поступление", `Пополнение: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: inTx.id });
-        saveDb(store);
-        send(res, 200, snapshot(email));
+        await addNote(email, "Поступление", `Пополнение: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: inTx.id });
+        send(res, 200, await snapshot(email));
         return;
       }
 
       if (req.method === "POST" && p === "/api/qr") {
         const b = await readBody(req);
         const amount = Number(b.amount);
-        const wallet = store.wallets[email];
+        const wallet = await db.getWallet(email);
+        const me = await db.getUser(email);
         const merchant = String(b.merchant || "QR-касса").trim().slice(0, 80) || "QR-касса";
         const payee = String(b.payee || "").trim();
         if (!(amount > 0)) return send(res, 400, { error: "Укажите сумму" });
-        try { assertNotFrozen(email); assertLimits(email, amount); } catch (e) { return send(res, 400, { error: e.message }); }
-        if (payee && isSelfPayee(email, payee)) return send(res, 400, { error: "Нельзя оплатить свой QR" });
+        try { await assertNotFrozen(email); await assertLimits(email, amount); } catch (e) { return send(res, 400, { error: e.message }); }
+        if (payee && await isSelfPayee(email, payee)) return send(res, 400, { error: "Нельзя оплатить свой QR" });
         if (amount > wallet.balance) return send(res, 400, { error: "Недостаточно средств" });
-        try { assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
-        const other = payee ? findPayee(payee, email) : null;
+        try { await assertPayCode(email, amount, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
+        const other = payee ? await findPayee(payee, email) : null;
         const fraud = await scoreOutgoing(email, amount, other ? (other.phone || payee) : "QR-касса", sess, "expense");
         if (modelBlocks(fraud)) {
           console.warn("[ml] qr blocked", { email, anomaly: fraud.anomaly, final_score: fraud.final_score });
           return send(res, 400, { error: clientBlockedMsg() });
         }
         const title = other ? `${other.lastName} ${other.firstName}`.trim() : merchant;
-        const qrTx = addTx(email, {
+        const qrTx = await addTx(email, {
           name: title,
           amount: -amount,
           type: "expense",
@@ -1283,23 +1113,23 @@ const server = http.createServer(async (req, res) => {
           counterparty: other ? (other.phone || other.walletId) : merchant,
           ...mlPatch(fraud),
         });
-        addNote(email, "Списание", `QR · ${title}: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: qrTx.id });
+        await addNote(email, "Списание", `QR · ${title}: ${amount.toLocaleString("ru-RU")} ₽`, "transfer", { txId: qrTx.id });
         if (other) {
-          const inTx = addTx(other.email, {
-            name: `${store.users[email].lastName} ${store.users[email].firstName}`.trim(),
+          const inTx = await addTx(other.email, {
+            name: `${me.lastName} ${me.firstName}`.trim(),
             amount,
             type: "income",
             icon: "qr_code",
             category: "Переводы",
             comment: "Оплата QR",
-            counterparty: store.users[email].phone || email,
+            counterparty: me.phone || email,
             linkedTxId: qrTx.id,
           });
           qrTx.linkedTxId = inTx.id;
-          addNote(other.email, "Перевод получен", `${store.users[email].firstName} оплатил ${amount.toLocaleString("ru-RU")} ₽ по QR`, "transfer", { txId: inTx.id });
+          await db.saveTx(qrTx);
+          await addNote(other.email, "Перевод получен", `${me.firstName} оплатил ${amount.toLocaleString("ru-RU")} ₽ по QR`, "transfer", { txId: inTx.id });
         }
-        saveDb(store);
-        send(res, 200, snapshot(email));
+        send(res, 200, await snapshot(email));
         return;
       }
 
@@ -1307,14 +1137,16 @@ const server = http.createServer(async (req, res) => {
         const b = await readBody(req);
         const rows = Array.isArray(b.rows) ? b.rows : [];
         const bulkTotal = rows.reduce((s, r) => s + (Number(r.amount) > 0 ? Number(r.amount) : 0), 0);
-        try { assertNotFrozen(email); assertLimits(email, bulkTotal); assertPayCode(email, bulkTotal, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
+        try { await assertNotFrozen(email); await assertLimits(email, bulkTotal); await assertPayCode(email, bulkTotal, b.code); } catch (e) { return send(res, 400, { error: e.message }); }
         let ok = 0;
         let fail = 0;
+        const me = await db.getUser(email);
         for (const row of rows) {
           const amount = Number(row.amount);
           const name = String(row.name || "").trim() || "Получатель";
           const phone = String(row.phone || "").trim();
-          if (isSelfPayee(email, phone || name) || (phone && !isRuMobile(phone)) || !(amount > 0) || amount > store.wallets[email].balance) {
+          const walletNow = await db.getWallet(email);
+          if (await isSelfPayee(email, phone || name) || (phone && !isRuMobile(phone)) || !(amount > 0) || amount > walletNow.balance) {
             fail += 1;
             continue;
           }
@@ -1323,7 +1155,7 @@ const server = http.createServer(async (req, res) => {
             fail += 1;
             continue;
           }
-          const bulkTx = addTx(email, {
+          const bulkTx = await addTx(email, {
             name: `Массовый: ${name}`,
             amount: -amount,
             type: "expense",
@@ -1333,25 +1165,25 @@ const server = http.createServer(async (req, res) => {
             counterparty: phone || name,
             ...mlPatch(fraud),
           });
-          const other = findPayee(phone || name, email);
+          const other = await findPayee(phone || name, email);
           if (other) {
-            const inTx = addTx(other.email, {
-              name: `Массовый от ${store.users[email].firstName}`,
+            const inTx = await addTx(other.email, {
+              name: `Массовый от ${me.firstName}`,
               amount,
               type: "income",
               icon: "upload_file",
               category: "Переводы",
               comment: "Массовый платёж",
-              counterparty: store.users[email].phone || email,
+              counterparty: me.phone || email,
               linkedTxId: bulkTx.id,
             });
             bulkTx.linkedTxId = inTx.id;
+            await db.saveTx(bulkTx);
           }
           ok += 1;
         }
-        addNote(email, "Массовый платёж", `Успешно: ${ok}, ошибок: ${fail}`, "system");
-        saveDb(store);
-        send(res, 200, { ok, fail, ...snapshot(email) });
+        await addNote(email, "Массовый платёж", `Успешно: ${ok}, ошибок: ${fail}`, "system");
+        send(res, 200, { ok, fail, ...(await snapshot(email)) });
         return;
       }
 
@@ -1362,7 +1194,7 @@ const server = http.createServer(async (req, res) => {
         if (!name || !phone) return send(res, 400, { error: "Укажите имя и телефон" });
         if (!isRuMobile(phone)) return send(res, 400, { error: "Укажите российский мобильный (+7, 8 или 9…)" });
         const colors = ["#00D2D3", "#228D57", "#48FFD5", "#FFB4AB"];
-        store.contacts.push({
+        await db.insertContact({
           id: uid("c-"),
           email,
           name,
@@ -1372,47 +1204,42 @@ const server = http.createServer(async (req, res) => {
           color: colors[Math.floor(Math.random() * colors.length)],
           favorite: false,
         });
-        saveDb(store);
-        send(res, 200, snapshot(email));
+        send(res, 200, await snapshot(email));
         return;
       }
 
       const contactMatch = p.match(/^\/api\/contacts\/([^/]+)$/);
       if (contactMatch) {
         const id = decodeURIComponent(contactMatch[1]);
-        const idx = store.contacts.findIndex((c) => c.id === id && c.email === email);
-        if (idx < 0) return send(res, 404, { error: "Контакт не найден" });
-        if (req.method === "DELETE") store.contacts.splice(idx, 1);
+        const contact = await db.getContact(email, id);
+        if (!contact) return send(res, 404, { error: "Контакт не найден" });
+        if (req.method === "DELETE") await db.deleteContact(email, id);
         if (req.method === "PATCH") {
           const b = await readBody(req);
-          if (typeof b.favorite === "boolean") store.contacts[idx].favorite = b.favorite;
+          if (typeof b.favorite === "boolean") await db.setContactFavorite(email, id, b.favorite);
         }
-        saveDb(store);
-        send(res, 200, snapshot(email));
+        send(res, 200, await snapshot(email));
         return;
       }
 
       if (req.method === "POST" && p === "/api/notes/read-all") {
-        for (const n of store.notes) if (n.email === email) n.read = true;
-        saveDb(store);
-        send(res, 200, snapshot(email));
+        await db.markNotesRead(email);
+        send(res, 200, await snapshot(email));
         return;
       }
 
       const noteMatch = p.match(/^\/api\/notes\/([^/]+)\/read$/);
       if (req.method === "POST" && noteMatch) {
         const id = decodeURIComponent(noteMatch[1]);
-        const n = store.notes.find((x) => x.id === id && x.email === email);
-        if (n) n.read = true;
-        saveDb(store);
-        send(res, 200, snapshot(email));
+        await db.markNoteRead(email, id);
+        send(res, 200, await snapshot(email));
         return;
       }
 
       if (req.method === "PATCH" && p === "/api/limits") {
         const b = await readBody(req);
-        const w = store.wallets[email];
-        const cur = limitsOf(email);
+        const w = await db.getWallet(email);
+        const cur = await limitsOf(email);
         const num = (v, fallback) => {
           const n = Number(v);
           return Number.isFinite(n) && n > 0 ? n : fallback;
@@ -1427,20 +1254,24 @@ const server = http.createServer(async (req, res) => {
           alertOp: Math.min(100, Math.max(1, num(b.alertOp, cur.alertOp))),
           alertAbroad: Math.min(100, Math.max(1, num(b.alertAbroad, cur.alertAbroad))),
         };
-        saveDb(store);
-        send(res, 200, snapshot(email));
+        await db.saveWallet(w);
+        send(res, 200, await snapshot(email));
         return;
       }
 
       if (req.method === "PATCH" && p === "/api/security") {
         const b = await readBody(req);
-        const w = store.wallets[email];
+        const w = await db.getWallet(email);
         if (typeof b.biometric === "boolean") w.biometric = b.biometric;
         if (typeof b.hideBalance === "boolean") w.hideBalance = b.hideBalance;
         if (typeof b.pin === "string" && b.pin) w.pin = b.pin;
-        if (b.otpChannel === "email" || b.otpChannel === "sms") store.users[email].otpChannel = b.otpChannel;
-        saveDb(store);
-        send(res, 200, snapshot(email));
+        await db.saveWallet(w);
+        if (b.otpChannel === "email" || b.otpChannel === "sms") {
+          const user = await db.getUser(email);
+          user.otpChannel = b.otpChannel;
+          await db.saveUser(user);
+        }
+        send(res, 200, await snapshot(email));
         return;
       }
 
@@ -1448,10 +1279,9 @@ const server = http.createServer(async (req, res) => {
         const b = await readBody(req);
         const text = String(b.text || "").trim();
         if (!text) return send(res, 400, { error: "Введите текст" });
-        addNote(email, "Обращение в поддержку", text, "system");
-        store.notes[store.notes.length - 1].read = true;
-        saveDb(store);
-        send(res, 200, snapshot(email));
+        const note = await addNote(email, "Обращение в поддержку", text, "system");
+        await db.markNoteRead(email, note.id);
+        send(res, 200, await snapshot(email));
         return;
       }
 
@@ -1469,10 +1299,10 @@ const server = http.createServer(async (req, res) => {
         const job = res.otpJob;
         const canSkip = job && ["login", "register"].includes(job.purpose) && job.owner;
         if (canSkip) {
-          const rec = store.codes[codeKey(job.purpose, job.owner)];
+          const rec = await db.getCode(job.purpose, job.owner);
           if (rec) {
             rec.bypass = true;
-            saveDb(store);
+            await db.saveCode(job.purpose, job.owner, rec);
           }
           send(res, 200, {
             ok: true,
@@ -1483,8 +1313,7 @@ const server = http.createServer(async (req, res) => {
           });
         } else {
           if (job?.purpose && job?.owner) {
-            delete store.codes[codeKey(job.purpose, job.owner)];
-            saveDb(store);
+            await db.deleteCode(job.purpose, job.owner);
           }
           send(res, 400, { error: e.message || "Не удалось отправить код" });
         }
@@ -1503,6 +1332,9 @@ const server = http.createServer(async (req, res) => {
     if (!res.writableEnded) send(res, 500, { error: err.message || "Ошибка сервера" });
   }
 });
+
+await db.initDb();
+await hydrateNotify();
 
 server.listen(PORT, HOST, () => {
   const lan = lanAddresses();

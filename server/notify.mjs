@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import nodemailer from "nodemailer";
 import { ruMobileDigits } from "./phone.mjs";
+import { readNotify, writeNotify } from "./db.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || __dirname;
@@ -32,13 +33,9 @@ function keep(val, fallback) {
   return s || fallback || "";
 }
 
-export function loadNotify() {
-  let file = {};
-  try {
-    if (fs.existsSync(FILE)) file = JSON.parse(fs.readFileSync(FILE, "utf8"));
-  } catch {
-    file = {};
-  }
+let cache = null;
+
+function fromEnv(file = {}) {
   return {
     smsruApiId: keep(file.smsruApiId, process.env.SMSRU_API_ID) || DEFAULT_SMSRU,
     smsFrom: keep(file.smsFrom, process.env.SMSRU_FROM),
@@ -50,7 +47,23 @@ export function loadNotify() {
   };
 }
 
-export function saveNotify(patch) {
+export function loadNotify() {
+  return cache || fromEnv();
+}
+
+export async function hydrateNotify() {
+  let file = {};
+  try {
+    if (fs.existsSync(FILE)) file = JSON.parse(fs.readFileSync(FILE, "utf8"));
+  } catch {
+    file = {};
+  }
+  const row = await readNotify();
+  cache = fromEnv(row || file);
+  if (!row) await writeNotify(cache);
+}
+
+export async function saveNotify(patch) {
   const cur = loadNotify();
   const next = {
     smsruApiId: keep(patch.smsruApiId, cur.smsruApiId) || DEFAULT_SMSRU,
@@ -61,18 +74,9 @@ export function saveNotify(patch) {
     smtpPass: keep(patch.smtpPass, cur.smtpPass).replace(/\s/g, ""),
     smtpFrom: keep(patch.smtpFrom, cur.smtpFrom) || keep(patch.smtpUser, cur.smtpUser),
   };
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(FILE, JSON.stringify(next, null, 2), "utf8");
+  cache = next;
+  await writeNotify(next);
   return publicNotify(next);
-}
-
-export function persistNotify() {
-  try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    saveNotify(loadNotify());
-  } catch {
-    /* volume may be read-only in tests */
-  }
 }
 
 export function publicNotify(cfg = loadNotify()) {
