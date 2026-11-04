@@ -16,7 +16,7 @@ export function ChannelPick({
       <p className="text-[rgba(185,202,203,0.7)] text-[12px] uppercase tracking-[1px] mb-2">Куда отправить код</p>
       <label className="flex items-start gap-3 mb-2 cursor-pointer">
         <input type="radio" className="mt-1 accent-[#00D2D3]" checked={channel === "sms"} onChange={() => onChange("sms")} />
-        <span className="text-[#E0E0E0] text-[14px]">На номер телефона (СМС)</span>
+        <span className="text-[#E0E0E0] text-[14px]">На телефон в Telegram</span>
       </label>
       <label className="flex items-start gap-3 cursor-pointer">
         <input type="radio" className="mt-1 accent-[#00D2D3]" checked={channel === "email"} onChange={() => onChange("email")} />
@@ -34,6 +34,7 @@ export default function OtpPanel({
   code,
   onCode,
   error,
+  botUrl,
 }: {
   title?: string;
   hint?: string;
@@ -42,6 +43,7 @@ export default function OtpPanel({
   code: string;
   onCode: (v: string) => void;
   error?: string;
+  botUrl?: string;
 }) {
   return (
     <div className="mb-2">
@@ -53,9 +55,14 @@ export default function OtpPanel({
         inputMode="numeric"
         value={code}
         onChange={(e) => onCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-        placeholder="4–6 цифр из СМС или письма"
+        placeholder="4–6 цифр из Telegram или письма"
         className="w-full bg-[rgba(255,255,255,0.05)] border-2 border-[rgba(63,78,79,0.7)] rounded-[17px] px-4 py-3.5 text-[#E0E0E0] text-[18px] tracking-[6px] text-center outline-none mb-2"
       />
+      {botUrl && (
+        <a href={botUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-full h-11 rounded-[16px] mb-3 font-medium" style={{ background: "linear-gradient(128deg,#00D2D3,#48FFD5)", color: "#0B1A1A" }}>
+          Открыть Telegram
+        </a>
+      )}
       {error && <p className="text-[#FFB4AB] text-[12px] mb-2">{error}</p>}
     </div>
   );
@@ -74,6 +81,7 @@ export function PayOtpSheet({
   onCancel,
   onSend,
   onConfirm,
+  botUrl,
 }: {
   open: boolean;
   amount: number;
@@ -87,6 +95,7 @@ export function PayOtpSheet({
   onCancel: () => void;
   onSend: () => void;
   onConfirm: () => void;
+  botUrl?: string;
 }) {
   const [sent, setSent] = useState(false);
   if (!open) return null;
@@ -97,7 +106,7 @@ export function PayOtpSheet({
         <p className="text-[rgba(185,202,203,0.75)] text-[14px] mt-2 mb-4">
           Сумма {amount.toLocaleString("ru-RU")} ₽ больше 10 000 ₽. Нужен одноразовый код.
         </p>
-        <OtpPanel channel={channel} onChannel={onChannel} code={code} onCode={onCode} hint={hint} error={error} />
+        <OtpPanel channel={channel} onChannel={onChannel} code={code} onCode={onCode} hint={hint} error={error} botUrl={botUrl} />
         <button
           type="button"
           disabled={busy}

@@ -25,7 +25,13 @@ start.bat
 - Телефоны / планшеты / другие ПК в той же Wi‑Fi: `http://IP-ЭТОГО-ПК:8443/`
 - API: [http://localhost:8787/api/health](http://localhost:8787/api/health)
 
-Данные общие: регистрация, баланс, переводы между кошельками (по телефону, email или ID). База — файл `server\data.json`.
+Данные общие: регистрация, баланс, переводы между кошельками (по телефону, email или ID). Боевая база — PostgreSQL. Код на телефон приходит в Telegram-бот [@AlfaKoshelekCRBot](https://t.me/AlfaKoshelekCRBot).
+
+Документы для команды:
+
+- Даня Иваненко, ML и устройство проекта: [`docs/dlya-dani-ivanenko.md`](docs/dlya-dani-ivanenko.md)
+- Стёпа, база данных: [`docs/dlya-styopy.md`](docs/dlya-styopy.md)
+- Дизайн и как объяснить его комиссии: [`docs/dlya-dizayna.md`](docs/dlya-dizayna.md)
 
 Демо: `ivan@alfa.demo` / `Demo1234`, SMS — любые 4 цифры. Новый аккаунт стартует с 0 ₽.
 

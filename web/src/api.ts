@@ -57,11 +57,11 @@ function remember(snap: Snapshot) {
 export const api = {
   health: () => req<{ ok: boolean }>("/api/health"),
   requestCode: (body: { login?: string; email?: string; phone?: string; password?: string; channel?: "sms" | "email"; purpose?: "login" | "register" | "pay" | "reset"; amount?: number }) =>
-    req<{ ok: boolean; via: string; masked?: string; fallback?: boolean }>("/api/auth/request-code", { method: "POST", body: JSON.stringify(body) }),
+    req<{ ok: boolean; via: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string }>("/api/auth/request-code", { method: "POST", body: JSON.stringify(body) }),
   login: (email: string, password: string, code?: string) =>
     req<Snapshot>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password, code }) }).then(remember),
   forgot: (login: string, channel?: "sms" | "email") =>
-    req<{ ok: boolean; via: string; masked?: string; fallback?: boolean }>("/api/auth/forgot", { method: "POST", body: JSON.stringify({ login, channel: channel || "email" }) }),
+    req<{ ok: boolean; via: string; masked?: string; fallback?: boolean; needLink?: boolean; botUrl?: string }>("/api/auth/forgot", { method: "POST", body: JSON.stringify({ login, channel: channel || "email" }) }),
   reset: (login: string, code: string, password: string) =>
     req<Snapshot>("/api/auth/reset", { method: "POST", body: JSON.stringify({ login, code, password }) }).then(remember),
   register: (body: Record<string, string>) =>

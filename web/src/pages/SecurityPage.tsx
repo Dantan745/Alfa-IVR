@@ -29,7 +29,7 @@ export default function SecurityPage({ onBack }: { onBack: () => void }) {
           onChange={(v) => void updateSecurity({ hideBalance: v })}
         />
         <Toggle
-          title="Телефон не принимает СМС"
+          title="Код на почту, а не в Telegram"
           hint="Коды входа, регистрации и крупных платежей пойдут на вашу почту"
           on={user?.otpChannel === "email"}
           onChange={(v) => void updateSecurity({ otpChannel: v ? "email" : "sms" })}
@@ -59,7 +59,7 @@ export default function SecurityPage({ onBack }: { onBack: () => void }) {
         <div className="rounded-[20px] px-4 py-4 mb-3" style={{ background: "#191C1C" }}>
           <p className="text-[#E0E0E0] text-[15px] font-medium">Двухфакторная защита</p>
           <p className="text-[rgba(185,202,203,0.5)] text-[12px] mt-1">
-            Код из СМС обязателен при входе, регистрации и платежах свыше 10 000 ₽. Если телефон не принимает СМС, на экране кода выберите отправку на почту.
+            Код обязателен при входе, регистрации и платежах свыше 10 000 ₽. На телефон он приходит в Telegram. Если Telegram нет, на экране кода выберите почту.
           </p>
         </div>
         <div className="rounded-[20px] px-4 py-4" style={{ background: "#191C1C" }}>

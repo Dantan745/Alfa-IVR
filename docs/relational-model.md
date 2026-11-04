@@ -52,7 +52,9 @@ erDiagram
 
 **audit_log**( <u>id</u>, action, created_at, actor, email, tx_id, reason, amount, comment, next_email, phone )
 
-**notify_settings**( <u>id</u>, smsru_api_id, sms_from, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from )
+**telegram_link**( <u>phone_key</u>, chat_id, linked_at )
+
+**notify_settings**( <u>id</u>, smsru_api_id, sms_from, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from, telegram_bot_token, telegram_bot_user )
 
 `contact.shown_wallet` — подпись в адресной книге, не ссылка на `app_user.wallet_id`. Кошелёк контакту присваивается при добавлении и на пользователя не указывает.
 
@@ -60,7 +62,9 @@ erDiagram
 
 `tx_mark` — только ответ модели по уже записанной операции: `anomaly` (0 или 1) и `final_score`. Набор признаков, по которому модель считает ответ, в эту схему не входит.
 
-`notify_settings` — одна строка с `id = 1`. Это настройка сервера, не данные клиента.
+`notify_settings` — одна строка с `id = 1`. Это настройка сервера, не данные клиента. `telegram_bot_token` — секрет бота, в интерфейс не отдаётся.
+
+`telegram_link` связывает последние 10 цифр телефона с чатом Telegram, куда уходит код. Внешнего ключа на `app_user` нет: номер можно привязать до регистрации.
 
 Лимиты стоят в `wallet`, а не в отдельной таблице: набор полей фиксированный, каждое число определяется только кошельком. Повторяющаяся группа здесь — копилки, поэтому они вынесены в `savings`. Список устройств вынесен в `user_device` по той же причине.
 
