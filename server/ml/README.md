@@ -66,7 +66,7 @@ echo {"amount":50000,"amount_to_avg_ratio":4.2,"hour":2,"is_night":1,"is_new_pay
 - `GET /api/admin/ml` — отчёт (ключ админа в заголовке `X-Admin-Key`)
 - `GET /api/admin/ml/features` — ряды + fraud-фичи для обучения
 
-Ключ по умолчанию: `AlfaDev-2026` (консоль сервера).
+Ключ администратора — секрет `ADMIN_KEY` на сервере. В репозитории его нет.
 
 ## Android
 

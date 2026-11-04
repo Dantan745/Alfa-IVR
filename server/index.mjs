@@ -19,7 +19,10 @@ const DATA_FILE = path.join(DATA_DIR, "data.json");
 const DIST = path.join(__dirname, "..", "web", "dist");
 const DEMO_EMAIL = "ivan@alfa.demo";
 const DEMO_PASS = "Demo1234";
-const ADMIN_KEY = process.env.ADMIN_KEY || "AlfaDev-2026";
+const PRODUCTION = process.env.NODE_ENV === "production";
+const ADMIN_KEY = process.env.ADMIN_KEY || "";
+const LOCK_AFTER = 8;
+const LOCK_MS = 15 * 60 * 1000;
 const EMAIL_OK = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
 const PAY_OTP_LIMIT = 10000;
 const CODE_TTL = 10 * 60 * 1000;
@@ -98,9 +101,57 @@ function locked(fn) {
   return db.withTx(fn);
 }
 
+function adminKeyOk(presented) {
+  const expected = ADMIN_KEY || (PRODUCTION ? "" : "AlfaDev-2026");
+  if (!expected || (PRODUCTION && (expected === "AlfaDev-2026" || expected.length < 16))) return false;
+  const a = Buffer.from(String(presented || ""));
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+function clientIp(req) {
+  const fly = String(req.headers["fly-client-ip"] || "").trim();
+  if (fly) return fly.slice(0, 64);
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return (forwarded || req.socket?.remoteAddress || "local").slice(0, 64);
+}
+
+const hits = new Map();
+function tooMany(key, limit, windowMs) {
+  const now = Date.now();
+  const row = hits.get(key);
+  if (!row || row.reset <= now) {
+    if (hits.size > 5000) hits.clear();
+    hits.set(key, { n: 1, reset: now + windowMs });
+    return false;
+  }
+  row.n += 1;
+  return row.n > limit;
+}
+
+function rateOver(key, limit) {
+  const row = hits.get(key);
+  return Boolean(row && row.reset > Date.now() && row.n >= limit);
+}
+
+function publicError(err) {
+  const m = String(err?.message || "");
+  if (!m || m.length > 240 || /select |insert |update |delete |syntax|econn|authentication|relation |column |scrypt|password_hash/i.test(m)) {
+    return "Ошибка сервера";
+  }
+  return m;
+}
+
+function publicWallet(wallet, extra = {}) {
+  if (!wallet) return null;
+  const { pin, ...rest } = wallet;
+  return { ...rest, pinSet: Boolean(pin), ...extra };
+}
+
 function publicUser(u, extra = {}) {
   if (!u) return null;
-  const { passwordHash, devices, freezeReason, frozenBy, frozenTxId, frozenAt, ...rest } = u;
+  const { passwordHash, devices, freezeReason, frozenBy, frozenTxId, frozenAt, lockedUntil, ...rest } = u;
   if (extra.admin) {
     return {
       ...rest,
@@ -220,7 +271,7 @@ async function snapshot(email) {
   const contacts = await db.listContacts(email);
   const L = await limitsOf(email);
   const usage = await usageOf(email);
-  return { user: publicUser(user), wallet: { ...wallet, limits: L, usage }, txs, notes, contacts };
+  return { user: publicUser(user), wallet: publicWallet(wallet, { limits: L, usage }), txs, notes, contacts };
 }
 
 function requestDeviceId(req) {
@@ -253,9 +304,16 @@ async function authEmail(req) {
   return (await sessionOf(req))?.email || null;
 }
 
+function lockedMessage(user) {
+  if (!user?.lockedUntil || user.lockedUntil <= Date.now()) return "";
+  const min = Math.max(1, Math.ceil((user.lockedUntil - Date.now()) / 60000));
+  return `Слишком много попыток. Повторите через ${min} мин.`;
+}
+
 async function rememberLoginFail(user) {
   if (!user) return;
   user.loginAttempts = Math.max(1, Number(user.loginAttempts) || 1) + 1;
+  if (user.loginAttempts >= LOCK_AFTER) user.lockedUntil = Date.now() + LOCK_MS;
   await db.saveUser(user);
 }
 
@@ -263,6 +321,7 @@ async function rememberLoginOk(user, deviceId) {
   const attempts = Math.max(1, Number(user.loginAttempts) || 1);
   user.lastLoginAttempts = attempts;
   user.loginAttempts = 1;
+  user.lockedUntil = 0;
   user.devices = Array.isArray(user.devices) ? user.devices : [];
   const known = Boolean(deviceId && user.devices.includes(deviceId));
   const newDevice = deviceId && !known ? 1 : 0;
@@ -481,14 +540,22 @@ async function putCode(purpose, email, channel, dest) {
   return rec;
 }
 
+const otpFails = new Map();
 async function takeCode(purpose, email, code) {
   const rec = await db.getCode(purpose, email);
   const got = String(code || "").trim();
+  const key = `${purpose}:${email}`;
   if (!rec || rec.exp < Date.now()) return false;
-  if (rec.bypass || rec.code === got) {
+  if ((!PRODUCTION && rec.bypass) || rec.code === got) {
+    otpFails.delete(key);
     await db.deleteCode(purpose, email);
     return true;
   }
+  const n = (otpFails.get(key) || 0) + 1;
+  if (n >= 5) {
+    otpFails.delete(key);
+    await db.deleteCode(purpose, email);
+  } else otpFails.set(key, n);
   return false;
 }
 
@@ -562,14 +629,24 @@ function readBody(req) {
   });
 }
 
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "no-referrer",
+  "Permissions-Policy": "camera=(self), microphone=(), geolocation=()",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://static.figma.com data:; img-src 'self' data: blob:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "X-DNS-Prefetch-Control": "off",
+  ...(PRODUCTION ? { "Strict-Transport-Security": "max-age=31536000; includeSubDomains" } : {}),
+};
+
 function send(res, status, body) {
   const data = JSON.stringify(body);
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(data),
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Key",
-    "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
+    "Cache-Control": "no-store",
+    ...SECURITY_HEADERS,
   });
   res.end(data);
 }
@@ -585,22 +662,29 @@ function mime(file) {
   return "application/octet-stream";
 }
 
+function insideDist(file) {
+  const root = path.resolve(DIST);
+  const rel = path.relative(root, file);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
 function serveStatic(req, res, urlPath) {
   if (!fs.existsSync(DIST)) return false;
   let rel = decodeURIComponent(urlPath.split("?")[0]);
   if (rel === "/") rel = "/index.html";
-  const file = path.normalize(path.join(DIST, rel));
-  if (!file.startsWith(DIST)) return false;
+  const file = path.resolve(DIST, rel.replace(/^[/\\]+/, ""));
+  if (!insideDist(file)) return false;
+  const headers = { ...SECURITY_HEADERS, "Cache-Control": rel === "/index.html" ? "no-cache" : "public, max-age=3600" };
   if (fs.existsSync(file) && fs.statSync(file).isFile()) {
     const buf = fs.readFileSync(file);
-    res.writeHead(200, { "Content-Type": mime(file), "Content-Length": buf.length });
+    res.writeHead(200, { ...headers, "Content-Type": mime(file), "Content-Length": buf.length });
     res.end(buf);
     return true;
   }
-  const index = path.join(DIST, "index.html");
+  const index = path.resolve(DIST, "index.html");
   if (fs.existsSync(index) && !path.extname(rel)) {
     const buf = fs.readFileSync(index);
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Length": buf.length });
+    res.writeHead(200, { ...headers, "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache", "Content-Length": buf.length });
     res.end(buf);
     return true;
   }
@@ -612,11 +696,7 @@ const server = http.createServer(async (req, res) => {
   const p = url.pathname.replace(/\/+$/, "") || "/";
 
   if (req.method === "OPTIONS") {
-    res.writeHead(204, {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Key",
-      "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
-    });
+    res.writeHead(204, SECURITY_HEADERS);
     res.end();
     return;
   }
@@ -624,13 +704,12 @@ const server = http.createServer(async (req, res) => {
   try {
     await locked(async () => {
       if (req.method === "GET" && p === "/api/health") {
-        send(res, 200, {
-          ok: true,
-          lan: lanAddresses(),
-          demo: `${DEMO_EMAIL} / ${DEMO_PASS}`,
-          otp: publicNotify(),
-          payOtpFrom: PAY_OTP_LIMIT,
-        });
+        send(res, 200, { ok: true, payOtpFrom: PAY_OTP_LIMIT });
+        return;
+      }
+
+      if (req.method === "POST" && p.startsWith("/api/auth") && tooMany("auth:" + clientIp(req), 30, 10 * 60 * 1000)) {
+        send(res, 429, { error: "Слишком много запросов. Подождите несколько минут." });
         return;
       }
 
@@ -651,7 +730,7 @@ const server = http.createServer(async (req, res) => {
           const ch = channel || user.otpChannel || "sms";
           try {
             const rec = await putCode("pay", authed, ch, ch === "email" ? user.email : user.phone);
-            console.log(`[код pay] ${authed} → ${rec.code} (${ch})`);
+            if (!PRODUCTION) console.log(`[код pay] ${authed} → ${rec.code} (${ch})`);
             res.otpJob = { channel: ch, phone: user.phone, email: user.email, code: rec.code, purpose: "pay", owner: authed };
           } catch (e) {
             return send(res, 400, { error: e.message });
@@ -669,7 +748,7 @@ const server = http.createServer(async (req, res) => {
           const ch = channel || "sms";
           try {
             const rec = await putCode("register", email, ch, ch === "email" ? email : phone);
-            console.log(`[код register] ${email} / ${phone} → ${rec.code} (${ch})`);
+            if (!PRODUCTION) console.log(`[код register] ${email} / ${phone} → ${rec.code} (${ch})`);
             res.otpJob = { channel: ch, phone: formatRuPhone(phone), email, code: rec.code, purpose: "register", owner: email };
           } catch (e) {
             return send(res, 400, { error: e.message });
@@ -679,6 +758,8 @@ const server = http.createServer(async (req, res) => {
 
         const user = await findUserByLogin(b.login || b.email);
         if (!user) return send(res, 400, { error: "Пользователь с такой почтой или телефоном не найден" });
+        const wait = lockedMessage(user);
+        if (wait) return send(res, 429, { error: wait });
         if (purpose === "login" && !(await passwordOk(user, b.password))) {
           await rememberLoginFail(user);
           return send(res, 400, { error: "Неверный пароль" });
@@ -687,7 +768,7 @@ const server = http.createServer(async (req, res) => {
         const ch = channel || user.otpChannel || "sms";
         try {
           const rec = await putCode("login", user.email, ch, ch === "email" ? user.email : user.phone);
-          console.log(`[код login] ${user.email} / ${user.phone} → ${rec.code} (${ch})`);
+          if (!PRODUCTION) console.log(`[код login] ${user.email} / ${user.phone} → ${rec.code} (${ch})`);
           res.otpJob = { channel: ch, phone: user.phone, email: user.email, code: rec.code, purpose: "login", owner: user.email };
         } catch (e) {
           return send(res, 400, { error: e.message });
@@ -744,6 +825,8 @@ const server = http.createServer(async (req, res) => {
         const b = await readBody(req);
         const user = await findUserByLogin(b.email || b.login);
         if (!user) return send(res, 400, { error: "Пользователь не найден" });
+        const wait = lockedMessage(user);
+        if (wait) return send(res, 429, { error: wait });
         if (!(await passwordOk(user, b.password))) {
           await rememberLoginFail(user);
           return send(res, 400, { error: "Неверный пароль" });
@@ -765,12 +848,14 @@ const server = http.createServer(async (req, res) => {
         const b = await readBody(req);
         const user = await findUserByLogin(b.login || b.email || b.phone);
         if (!user) return send(res, 400, { error: "Пользователь с такой почтой или телефоном не найден" });
+        const wait = lockedMessage(user);
+        if (wait) return send(res, 429, { error: wait });
         if (user.frozen) return send(res, 403, { error: "Счёт заблокирован. Обратитесь в поддержку." });
         if (user.email === DEMO_EMAIL) return send(res, 200, { ok: true, via: "demo", masked: "демо" });
         const ch = b.channel === "sms" ? "sms" : "email";
         try {
           const rec = await putCode("reset", user.email, ch, ch === "sms" ? user.phone : user.email);
-          console.log(`[код reset] ${user.email} → ${rec.code} (${ch})`);
+          if (!PRODUCTION) console.log(`[код reset] ${user.email} → ${rec.code} (${ch})`);
           res.otpJob = { channel: ch, phone: user.phone, email: user.email, code: rec.code, purpose: "reset", owner: user.email };
         } catch (e) {
           return send(res, 400, { error: e.message });
@@ -783,6 +868,8 @@ const server = http.createServer(async (req, res) => {
         const user = await findUserByLogin(b.login || b.email);
         const password = String(b.password || "");
         if (!user) return send(res, 400, { error: "Пользователь не найден" });
+        const wait = lockedMessage(user);
+        if (wait) return send(res, 429, { error: wait });
         if (password.length < 8) return send(res, 400, { error: "Новый пароль от 8 символов" });
         if (user.email !== DEMO_EMAIL && !(await takeCode("reset", user.email, b.code))) {
           return send(res, 400, { error: "Неверный или просроченный код из письма" });
@@ -797,7 +884,12 @@ const server = http.createServer(async (req, res) => {
 
       const adminKey = req.headers["x-admin-key"];
       if (p.startsWith("/api/admin")) {
-        if (adminKey !== ADMIN_KEY) return send(res, 401, { error: "Неверный ключ администратора" });
+        const adminBucket = "adminfail:" + clientIp(req);
+        if (rateOver(adminBucket, 12)) return send(res, 429, { error: "Слишком много запросов. Подождите несколько минут." });
+        if (!adminKeyOk(adminKey)) {
+          tooMany(adminBucket, 12, 15 * 60 * 1000);
+          return send(res, 401, { error: "Неверный ключ администратора" });
+        }
         if (req.method === "GET" && p === "/api/admin/notify") {
           send(res, 200, publicNotify());
           return;
@@ -888,7 +980,7 @@ const server = http.createServer(async (req, res) => {
               ...publicUser(u, { admin: true }),
               balance: u.balance || 0,
               txCount: u.txCount,
-              lastCode: await lastCodeFor(u.email),
+              codePending: Boolean(await lastCodeFor(u.email)),
               sessions: await db.countSessions(u.email),
             });
           }
@@ -932,7 +1024,7 @@ const server = http.createServer(async (req, res) => {
             await setUserPassword(user, password);
             await audit("user.password", { email });
           }
-          send(res, 200, { ok: true, user: publicUser(await db.getUser(email), { admin: true }), wallet: await db.getWallet(email) });
+          send(res, 200, { ok: true, user: publicUser(await db.getUser(email), { admin: true }), wallet: publicWallet(await db.getWallet(email)) });
           return;
         }
         const one = p.match(/^\/api\/admin\/users\/([^/]+)$/);
@@ -944,8 +1036,8 @@ const server = http.createServer(async (req, res) => {
             const marks = await liveModelMarks();
             const wallet = await db.getWallet(email);
             send(res, 200, {
-              user: { ...publicUser(user, { admin: true }), lastCode: await lastCodeFor(email), balance: wallet?.balance || 0, txCount: await db.countTxs(email) },
-              wallet,
+              user: { ...publicUser(user, { admin: true }), codePending: Boolean(await lastCodeFor(email)), balance: wallet?.balance || 0, txCount: await db.countTxs(email) },
+              wallet: publicWallet(wallet),
               txs: (await db.listTxsByEmail(email)).map((t) => decorateAdminTx(t, marks)),
               contacts: await db.listContacts(email),
               notes: await db.listNotes(email),
@@ -1264,7 +1356,7 @@ const server = http.createServer(async (req, res) => {
         const w = await db.getWallet(email);
         if (typeof b.biometric === "boolean") w.biometric = b.biometric;
         if (typeof b.hideBalance === "boolean") w.hideBalance = b.hideBalance;
-        if (typeof b.pin === "string" && b.pin) w.pin = b.pin;
+        if (typeof b.pin === "string" && b.pin) w.pin = await hashPassword(b.pin);
         await db.saveWallet(w);
         if (b.otpChannel === "email" || b.otpChannel === "sms") {
           const user = await db.getUser(email);
@@ -1297,7 +1389,7 @@ const server = http.createServer(async (req, res) => {
         send(res, 200, { ok: true, via: del.via, masked: del.masked, ttl: 600, fallback: Boolean(del.fallback) });
       } catch (e) {
         const job = res.otpJob;
-        const canSkip = job && ["login", "register"].includes(job.purpose) && job.owner;
+        const canSkip = !PRODUCTION && job && ["login", "register"].includes(job.purpose) && job.owner;
         if (canSkip) {
           const rec = await db.getCode(job.purpose, job.owner);
           if (rec) {
@@ -1322,14 +1414,16 @@ const server = http.createServer(async (req, res) => {
     }
     if (res.writableEnded) return;
     if (serveStatic(req, res, p)) return;
-    send(res, 200, {
-      name: "Alfa Кошелёк ЦР",
-      api: "/api/health",
-      web: "http://localhost:8443/",
-      lan: lanAddresses().map((ip) => `http://${ip}:8443/`),
-    });
+    send(res, 200, PRODUCTION
+      ? { name: "Alfa Кошелёк ЦР", api: "/api/health" }
+      : {
+        name: "Alfa Кошелёк ЦР",
+        api: "/api/health",
+        web: "http://localhost:8443/",
+        lan: lanAddresses().map((ip) => `http://${ip}:8443/`),
+      });
   } catch (err) {
-    if (!res.writableEnded) send(res, 500, { error: err.message || "Ошибка сервера" });
+    if (!res.writableEnded) send(res, 500, { error: publicError(err) });
   }
 });
 
@@ -1342,8 +1436,10 @@ server.listen(PORT, HOST, () => {
   for (const ip of lan) console.log(`LAN          http://${ip}:${PORT}`);
   console.log(`Web UI       http://localhost:8443`);
   for (const ip of lan) console.log(`Web LAN      http://${ip}:8443`);
-  console.log(`Демо         ${DEMO_EMAIL} / ${DEMO_PASS}`);
-  console.log(`Админ        http://localhost:8443/admin  ключ: ${ADMIN_KEY}`);
+  if (!PRODUCTION) {
+    console.log(`Демо         ${DEMO_EMAIL} / ${DEMO_PASS}`);
+    console.log(`Админ        http://localhost:8443/admin  ключ: ${ADMIN_KEY || "AlfaDev-2026"}`);
+  }
   try {
     const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="api_base" translatable="false">http://${lan[0] || "10.0.2.2"}:${PORT}</string>\n</resources>\n`;
     const dir = path.join(__dirname, "..", "android", "app", "src", "main", "res", "values");

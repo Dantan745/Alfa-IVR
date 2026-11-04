@@ -79,7 +79,8 @@ export type DbWallet = {
   balance: number;
   savings: { id: string; name: string; amount: number }[];
   biometric: boolean;
-  pin: string;
+  pin?: string;
+  pinSet?: boolean;
   hideBalance: boolean;
   limits?: WalletLimits;
   usage?: { day: number; month: number; abroad: number };

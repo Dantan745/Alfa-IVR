@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -34,8 +35,10 @@ CREATE TABLE IF NOT EXISTS app_user (
   frozen_at           bigint,
   frozen_by           text NOT NULL DEFAULT '',
   frozen_tx_id        text,
+  locked_until        bigint,
   created_at          bigint NOT NULL
 );
+ALTER TABLE app_user ADD COLUMN IF NOT EXISTS locked_until bigint;
 DROP INDEX IF EXISTS app_user_phone_key_idx;
 CREATE UNIQUE INDEX IF NOT EXISTS app_user_phone_key_idx ON app_user (phone_key) WHERE phone_key <> '';
 
@@ -242,6 +245,7 @@ function mapUser(row) {
     frozenAt: row.frozen_at == null ? undefined : Number(row.frozen_at),
     frozenBy: row.frozen_by,
     frozenTxId: row.frozen_tx_id || "",
+    lockedUntil: row.locked_until == null ? 0 : Number(row.locked_until),
     devices: row.devices || [],
   };
 }
@@ -381,15 +385,15 @@ export async function insertUser(user) {
   await query(
     `INSERT INTO app_user (
       email, phone, wallet_id, password_hash, last_name, first_name, middle_name, passport,
-      otp_channel, login_attempts, last_login_attempts, frozen, freeze_reason, frozen_at, frozen_by, frozen_tx_id, created_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      otp_channel, login_attempts, last_login_attempts, frozen, freeze_reason, frozen_at, frozen_by, frozen_tx_id, locked_until, created_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
     [
       user.email, user.phone, user.walletId, user.passwordHash,
       user.lastName || "", user.firstName || "", user.middleName || "", user.passport || "",
       user.otpChannel === "email" ? "email" : "sms",
       user.loginAttempts || 1, user.lastLoginAttempts || 1,
       Boolean(user.frozen), user.freezeReason || "", user.frozenAt || null, user.frozenBy || "",
-      user.frozenTxId || null, user.createdAt || Date.now(),
+      user.frozenTxId || null, user.lockedUntil || null, user.createdAt || Date.now(),
     ],
   );
   for (const deviceId of user.devices || []) {
@@ -402,13 +406,13 @@ export async function saveUser(user) {
     `UPDATE app_user SET
       phone = $2, password_hash = $3, last_name = $4, first_name = $5, middle_name = $6, passport = $7,
       otp_channel = $8, login_attempts = $9, last_login_attempts = $10, frozen = $11, freeze_reason = $12,
-      frozen_at = $13, frozen_by = $14, frozen_tx_id = $15
+      frozen_at = $13, frozen_by = $14, frozen_tx_id = $15, locked_until = $16
      WHERE email = $1`,
     [
       user.email, user.phone, user.passwordHash, user.lastName || "", user.firstName || "", user.middleName || "",
       user.passport || "", user.otpChannel === "email" ? "email" : "sms",
       Math.max(1, Number(user.loginAttempts) || 1), Math.max(1, Number(user.lastLoginAttempts) || 1),
-      Boolean(user.frozen), user.freezeReason || "", user.frozenAt || null, user.frozenBy || "", user.frozenTxId || null,
+      Boolean(user.frozen), user.freezeReason || "", user.frozenAt || null, user.frozenBy || "", user.frozenTxId || null, user.lockedUntil || null,
     ],
   );
   if (Array.isArray(user.devices)) {
@@ -603,20 +607,24 @@ export async function setContactFavorite(email, id, favorite) {
   return r.rowCount > 0;
 }
 
+function sessionKey(token) {
+  return crypto.createHash("sha256").update(String(token || "")).digest("hex");
+}
+
 export async function insertSession(token, session) {
   await query(
     "INSERT INTO session (token, email, expires_at, device_id, new_device, login_attempts) VALUES ($1,$2,$3,$4,$5,$6)",
-    [token, session.email, session.exp, session.deviceId || "", Boolean(session.newDevice), session.loginAttempts || 1],
+    [sessionKey(token), session.email, session.exp, session.deviceId || "", Boolean(session.newDevice), session.loginAttempts || 1],
   );
 }
 
 export async function getSession(token) {
   if (!token) return null;
-  const r = await query("SELECT * FROM session WHERE token = $1", [token]);
+  const r = await query("SELECT * FROM session WHERE token = $1", [sessionKey(token)]);
   const row = r.rows[0];
   if (!row) return null;
   if (Number(row.expires_at) < Date.now()) {
-    await query("DELETE FROM session WHERE token = $1", [token]);
+    await query("DELETE FROM session WHERE token = $1", [sessionKey(token)]);
     return null;
   }
   return {
@@ -629,7 +637,7 @@ export async function getSession(token) {
 }
 
 export async function deleteSession(token) {
-  if (token) await query("DELETE FROM session WHERE token = $1", [token]);
+  if (token) await query("DELETE FROM session WHERE token = $1", [sessionKey(token)]);
 }
 
 export async function deleteUserSessions(email) {
@@ -856,7 +864,8 @@ async function importJson(raw) {
   }
   for (const wallet of Object.values(raw.wallets || {})) {
     if (!raw.users?.[wallet.email]) continue;
-    await insertWallet(wallet);
+    const pin = wallet.pin && !String(wallet.pin).startsWith("scrypt$") ? await hashPassword(String(wallet.pin)) : (wallet.pin || "");
+    await insertWallet({ ...wallet, pin });
   }
   for (const tx of raw.txs || []) {
     if (!raw.users?.[tx.email]) continue;
@@ -934,7 +943,7 @@ async function seedDemo() {
     email,
     balance: 5000,
     biometric: false,
-    pin: "1234",
+    pin: await hashPassword("1234"),
     hideBalance: false,
     savings: [
       { id: "s1", name: "Копилка 1", amount: 200 },
