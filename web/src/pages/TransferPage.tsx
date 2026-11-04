@@ -12,10 +12,10 @@ interface TransferPageProps {
 function PageHeader({ title, onBack }: { title: string; onBack: () => void }) {
   return (
     <div className="flex items-center px-4 pt-4 pb-3 gap-3">
-      <button onClick={onBack} className="w-10 h-10 rounded-full bg-[#191C1C] flex items-center justify-center">
-        <span className="material-symbols-outlined text-[#00D2D3]">arrow_back</span>
+      <button onClick={onBack} className="w-10 h-10 rounded-full bg-[var(--card)] flex items-center justify-center">
+        <span className="material-symbols-outlined text-[var(--accent)]">arrow_back</span>
       </button>
-      <p className="text-[#E0E0E0] text-[20px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>{title}</p>
+      <p className="text-[var(--ink)] text-[20px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>{title}</p>
     </div>
   );
 }
@@ -25,14 +25,14 @@ function Input({ label, placeholder, value, onChange, type = "text" }: {
 }) {
   return (
     <div className="mb-4">
-      <p className="text-[rgba(185,202,203,0.7)] text-[12px] uppercase tracking-[1px] mb-2"
+      <p className="text-[var(--muted-70)] text-[12px] uppercase tracking-[1px] mb-2"
         style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>{label}</p>
       <input
         type={type}
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-[rgba(255,255,255,0.05)] border-2 border-[rgba(63,78,79,0.7)] rounded-[17px] px-4 py-3.5 text-[#E0E0E0] text-[16px] outline-none focus:border-[rgba(0,210,211,0.5)] placeholder-[#445456] transition-colors"
+        className="w-full bg-[var(--field)] border-2 border-[var(--stroke)] rounded-[17px] px-4 py-3.5 text-[var(--ink)] text-[16px] outline-none focus:border-[rgba(0,210,211,0.5)] placeholder-[var(--disabled-ink)] transition-colors"
         style={{ fontFamily: "'Manrope:Regular', sans-serif" }}
       />
     </div>
@@ -47,8 +47,8 @@ function PrimaryBtn({ label, onClick, disabled }: { label: string; onClick: () =
       className="w-full rounded-[17px] h-[52px] font-medium text-[18px] transition-opacity"
       style={{
         fontFamily: "'Roboto:Medium', sans-serif",
-        background: disabled ? "#2A3A3C" : "linear-gradient(128deg, #00D2D3 0%, #48FFD5 51%, #00D2D3 100%)",
-        color: disabled ? "#445456" : "#0B1A1A",
+        background: disabled ? "var(--avatar-from)" : "linear-gradient(128deg, var(--fill) 0%, var(--fill-2) 51%, var(--fill) 100%)",
+        color: disabled ? "var(--disabled-ink)" : "#0B1A1A",
         boxShadow: disabled ? "none" : "0 0 30px rgba(72,255,213,0.3)",
       }}
     >
@@ -115,17 +115,17 @@ export default function TransferPage({ onBack, onNavigate }: TransferPageProps) 
         <div className="flex-1 flex flex-col items-center justify-center gap-4 px-4">
           <div
             className="w-20 h-20 rounded-full flex items-center justify-center"
-            style={{ background: "rgba(0,210,211,0.15)", border: "2px solid #00D2D3" }}
+            style={{ background: "rgba(0,210,211,0.15)", border: "2px solid var(--accent)" }}
           >
-            <span className="material-symbols-outlined text-[#00D2D3] text-[40px]">check_circle</span>
+            <span className="material-symbols-outlined text-[var(--accent)] text-[40px]">check_circle</span>
           </div>
-          <p className="text-[#E0E0E0] text-[24px] font-medium text-center" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+          <p className="text-[var(--ink)] text-[24px] font-medium text-center" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
             {user?.frozen ? "Перевод принят" : "Перевод выполнен"}
           </p>
-          <p className="text-[#00D2D3] text-[32px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
+          <p className="text-[var(--accent)] text-[32px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
             {amount} ₽
           </p>
-          <p className="text-[rgba(185,202,203,0.7)] text-[14px] text-center" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+          <p className="text-[var(--muted-70)] text-[14px] text-center" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
             {user?.frozen
               ? "Операция принята и находится в обработке."
               : `Средства переведены на номер ${phone}`}
@@ -143,7 +143,7 @@ export default function TransferPage({ onBack, onNavigate }: TransferPageProps) 
       <PageHeader title="Перевод" onBack={onBack} />
 
       {/* Tabs */}
-      <div className="flex mx-4 mb-5 bg-[#191C1C] rounded-[16px] p-1">
+      <div className="flex mx-4 mb-5 bg-[var(--card)] rounded-[16px] p-1">
         {([["phone", "По номеру телефона"], ["id", "По ID кошелька"]] as [string, string][]).map(([key, label]) => (
           <button
             key={key}
@@ -151,8 +151,8 @@ export default function TransferPage({ onBack, onNavigate }: TransferPageProps) 
             className="flex-1 py-2.5 rounded-[12px] text-[13px] font-medium transition-all"
             style={{
               fontFamily: "'Roboto:Medium', sans-serif",
-              background: tab === key ? "#282A2A" : "transparent",
-              color: tab === key ? "#00D2D3" : "rgba(185,202,203,0.6)",
+              background: tab === key ? "var(--raised)" : "transparent",
+              color: tab === key ? "var(--accent)" : "var(--muted-60)",
               boxShadow: tab === key ? "0 0 10px rgba(0,210,211,0.1)" : "none",
             }}
           >
@@ -163,7 +163,7 @@ export default function TransferPage({ onBack, onNavigate }: TransferPageProps) 
 
       {contacts.length > 0 && (
       <div className="px-4 mb-5">
-        <p className="text-[rgba(185,202,203,0.6)] text-[12px] uppercase tracking-[1px] mb-3"
+        <p className="text-[var(--muted-60)] text-[12px] uppercase tracking-[1px] mb-3"
           style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>Частые получатели</p>
         <div className="flex gap-4 overflow-x-auto pb-2">
           {contacts.map((c) => (
@@ -174,13 +174,13 @@ export default function TransferPage({ onBack, onNavigate }: TransferPageProps) 
             >
               <div
                 className="w-12 h-12 rounded-full flex items-center justify-center"
-                style={{ background: "linear-gradient(#2A3A3C, #1A2426)" }}
+                style={{ background: "linear-gradient(var(--avatar-from), var(--avatar-to))" }}
               >
-                <span className="text-[#00D2D3] text-[18px]" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
+                <span className="text-[var(--accent)] text-[18px]" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
                   {c.initials}
                 </span>
               </div>
-              <span className="text-[rgba(185,202,203,0.8)] text-[11px] text-center" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+              <span className="text-[var(--muted-80)] text-[11px] text-center" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
                 {c.name.split(" ")[0]}
               </span>
             </button>
@@ -204,15 +204,15 @@ export default function TransferPage({ onBack, onNavigate }: TransferPageProps) 
           className="flex items-center justify-between px-4 py-3 rounded-[16px] mb-5"
           style={{ background: "rgba(0,210,211,0.05)", border: "1px solid rgba(0,210,211,0.15)" }}
         >
-          <span className="text-[rgba(185,202,203,0.7)] text-[13px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+          <span className="text-[var(--muted-70)] text-[13px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
             Доступно
           </span>
-          <span className="text-[#00D2D3] text-[15px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+          <span className="text-[var(--accent)] text-[15px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
             {formatRub(balance)} ₽
           </span>
         </div>
 
-        {error && <p className="text-[#FFB4AB] text-[13px] mb-3">{error}</p>}
+        {error && <p className="text-[var(--danger)] text-[13px] mb-3">{error}</p>}
         <PrimaryBtn label="Перевести" onClick={() => void handleSend()} disabled={!phone || !amount} />
 
         <div className="mt-4 mb-2 flex gap-3">
@@ -221,16 +221,16 @@ export default function TransferPage({ onBack, onNavigate }: TransferPageProps) 
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-[17px] border border-[rgba(0,210,211,0.3)]"
             style={{ background: "rgba(0,210,211,0.05)" }}
           >
-            <span className="material-symbols-outlined text-[#00D2D3] text-[18px]">upload_file</span>
-            <span className="text-[#00D2D3] text-[13px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>Массовый платёж</span>
+            <span className="material-symbols-outlined text-[var(--accent)] text-[18px]">upload_file</span>
+            <span className="text-[var(--accent)] text-[13px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>Массовый платёж</span>
           </button>
           <button
             onClick={() => onNavigate("smart")}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-[17px] border border-[rgba(0,210,211,0.3)]"
             style={{ background: "rgba(0,210,211,0.05)" }}
           >
-            <span className="material-symbols-outlined text-[#00D2D3] text-[18px]">smart_toy</span>
-            <span className="text-[#00D2D3] text-[13px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>Смарт-контракт</span>
+            <span className="material-symbols-outlined text-[var(--accent)] text-[18px]">smart_toy</span>
+            <span className="text-[var(--accent)] text-[13px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>Смарт-контракт</span>
           </button>
         </div>
       </div>

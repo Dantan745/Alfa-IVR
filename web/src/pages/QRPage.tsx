@@ -243,19 +243,19 @@ export default function QRPage({ onBack, incoming = null }: QRPageProps) {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="flex items-center px-4 pt-4 pb-3 gap-3">
-        <button onClick={onBack} className="w-10 h-10 rounded-full bg-[#191C1C] flex items-center justify-center pressable">
-          <span className="material-symbols-outlined text-[#00D2D3]">arrow_back</span>
+        <button onClick={onBack} className="w-10 h-10 rounded-full bg-[var(--card)] flex items-center justify-center pressable">
+          <span className="material-symbols-outlined text-[var(--accent)]">arrow_back</span>
         </button>
-        <p className="text-[#E0E0E0] text-[20px] font-medium">QR-оплата</p>
+        <p className="text-[var(--ink)] text-[20px] font-medium">QR-оплата</p>
       </div>
 
-      <div className="flex mx-4 mb-4 bg-[#191C1C] rounded-[16px] p-1">
+      <div className="flex mx-4 mb-4 bg-[var(--card)] rounded-[16px] p-1">
         {([["scan", "Сканировать"], ["generate", "Мой QR"]] as const).map(([key, label]) => (
           <button
             key={key}
             onClick={() => { setTab(key); setBill(null); seen.current = ""; setDone(""); setCamError(""); }}
             className="flex-1 py-2.5 rounded-[12px] text-[13px] font-medium pressable"
-            style={{ background: tab === key ? "#282A2A" : "transparent", color: tab === key ? "#00D2D3" : "rgba(185,202,203,0.6)" }}
+            style={{ background: tab === key ? "var(--raised)" : "transparent", color: tab === key ? "var(--accent)" : "var(--muted-60)" }}
           >
             {label}
           </button>
@@ -268,30 +268,30 @@ export default function QRPage({ onBack, incoming = null }: QRPageProps) {
             <video ref={videoRef} className="absolute inset-0 h-full w-full object-cover" playsInline muted />
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <div className="relative h-[230px] w-[230px]">
-                <div className="absolute left-0 top-0 h-8 w-8 rounded-tl-[8px] border-l-[3px] border-t-[3px] border-[#48FFD5]" />
-                <div className="absolute right-0 top-0 h-8 w-8 rounded-tr-[8px] border-r-[3px] border-t-[3px] border-[#48FFD5]" />
-                <div className="absolute bottom-0 left-0 h-8 w-8 rounded-bl-[8px] border-b-[3px] border-l-[3px] border-[#48FFD5]" />
-                <div className="absolute bottom-0 right-0 h-8 w-8 rounded-br-[8px] border-b-[3px] border-r-[3px] border-[#48FFD5]" />
-                <div className="qr-beam absolute left-3 right-3 h-[2px]" style={{ background: "linear-gradient(90deg, transparent, #48FFD5, transparent)", boxShadow: "0 0 12px #48FFD5" }} />
+                <div className="absolute left-0 top-0 h-8 w-8 rounded-tl-[8px] border-l-[3px] border-t-[3px] border-[var(--good)]" />
+                <div className="absolute right-0 top-0 h-8 w-8 rounded-tr-[8px] border-r-[3px] border-t-[3px] border-[var(--good)]" />
+                <div className="absolute bottom-0 left-0 h-8 w-8 rounded-bl-[8px] border-b-[3px] border-l-[3px] border-[var(--good)]" />
+                <div className="absolute bottom-0 right-0 h-8 w-8 rounded-br-[8px] border-b-[3px] border-r-[3px] border-[var(--good)]" />
+                <div className="qr-beam absolute left-3 right-3 h-[2px]" style={{ background: "linear-gradient(90deg, transparent, var(--fill-2), transparent)", boxShadow: "0 0 12px var(--good)" }} />
               </div>
             </div>
             {torchOk && (
-              <button type="button" onClick={() => void toggleTorch()} className="absolute right-3 top-3 pressable rounded-full bg-black/50 px-3 py-2 text-[12px] text-[#48FFD5]">
+              <button type="button" onClick={() => void toggleTorch()} className="absolute right-3 top-3 pressable rounded-full bg-black/50 px-3 py-2 text-[12px] text-[var(--good)]">
                 {torchOn ? "Вспышка вкл" : "Вспышка"}
               </button>
             )}
           </div>
-          <p className="mt-4 text-center text-[16px] text-[#E0E0E0]">Наведите рамку на QR</p>
-          <p className="mt-1 text-center text-[13px] text-[rgba(185,202,203,0.55)]">Код кассы, счёта или кошелька ЦР</p>
-          {camError && <p className="mt-3 text-center text-[13px] text-[#FFB4AB]">{camError}</p>}
-          {done && <p className="mt-3 text-center text-[14px] text-[#48FFD5]">{done}</p>}
+          <p className="mt-4 text-center text-[16px] text-[var(--ink)]">Наведите рамку на QR</p>
+          <p className="mt-1 text-center text-[13px] text-[var(--muted-55)]">Код кассы, счёта или кошелька ЦР</p>
+          {camError && <p className="mt-3 text-center text-[13px] text-[var(--danger)]">{camError}</p>}
+          {done && <p className="mt-3 text-center text-[14px] text-[var(--good)]">{done}</p>}
           <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => {
             const file = e.target.files?.[0];
             e.target.value = "";
             if (!file) return;
             void readFile(file).then((text) => openBill(text || " ")).catch(() => setCamError("Не удалось прочитать фото"));
           }} />
-          <button type="button" className="mt-4 w-full rounded-[17px] border border-[rgba(0,210,211,0.3)] py-3 text-[14px] text-[#00D2D3] pressable" onClick={() => fileRef.current?.click()}>
+          <button type="button" className="mt-4 w-full rounded-[17px] border border-[rgba(0,210,211,0.3)] py-3 text-[14px] text-[var(--accent)] pressable" onClick={() => fileRef.current?.click()}>
             Загрузить фото QR
           </button>
         </div>
@@ -300,53 +300,53 @@ export default function QRPage({ onBack, incoming = null }: QRPageProps) {
           <div className="mb-4 rounded-[28px] bg-[#F7FFFE] p-4">
             {image ? <img src={image} alt="QR для оплаты" width={260} height={260} className="rounded-[12px]" /> : <div className="h-[260px] w-[260px]" />}
           </div>
-          <p className="text-[16px] text-[#E0E0E0]">{title}</p>
-          <p className="mt-1 text-[13px] text-[rgba(185,202,203,0.6)]">{user?.phone || walletId}</p>
-          <p className="mt-1 text-[12px] text-[rgba(185,202,203,0.4)]">{walletId}</p>
-          <p className="mt-3 text-center text-[13px] text-[rgba(185,202,203,0.55)]">Камера телефона откроет оплату в Альфа Кошельке</p>
+          <p className="text-[16px] text-[var(--ink)]">{title}</p>
+          <p className="mt-1 text-[13px] text-[var(--muted-60)]">{user?.phone || walletId}</p>
+          <p className="mt-1 text-[12px] text-[var(--muted-40)]">{walletId}</p>
+          <p className="mt-3 text-center text-[13px] text-[var(--muted-55)]">Камера телефона откроет оплату в Альфа Кошельке</p>
           <div className="mt-4 w-full">
-            <p className="mb-2 text-[12px] uppercase tracking-[1px] text-[rgba(185,202,203,0.7)]">Сумма в QR, необязательно</p>
+            <p className="mb-2 text-[12px] uppercase tracking-[1px] text-[var(--muted-70)]">Сумма в QR, необязательно</p>
             <input
               inputMode="decimal"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="Пусто — плательщик введёт сам"
-              className="w-full rounded-[17px] border-2 border-[rgba(63,78,79,0.7)] bg-[rgba(255,255,255,0.05)] px-4 py-3.5 text-[16px] text-[#E0E0E0] outline-none"
+              className="w-full rounded-[17px] border-2 border-[var(--stroke)] bg-[var(--field)] px-4 py-3.5 text-[16px] text-[var(--ink)] outline-none"
             />
           </div>
           <button type="button" onClick={() => void share()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-[17px] border border-[rgba(0,210,211,0.3)] py-3.5 pressable">
-            <span className="material-symbols-outlined text-[20px] text-[#00D2D3]">share</span>
-            <span className="text-[15px] text-[#00D2D3]">Поделиться QR</span>
+            <span className="material-symbols-outlined text-[20px] text-[var(--accent)]">share</span>
+            <span className="text-[15px] text-[var(--accent)]">Поделиться QR</span>
           </button>
-          {copied && <p className="mt-2 break-all text-center text-[12px] text-[#48FFD5]">{copied}</p>}
+          {copied && <p className="mt-2 break-all text-center text-[12px] text-[var(--good)]">{copied}</p>}
         </div>
       )}
 
       {bill && (
         <div className="absolute inset-0 z-20 flex items-end bg-black/55">
-          <div className="w-full rounded-t-[28px] bg-[#191C1C] px-5 pb-8 pt-5">
-            <p className="text-[13px] uppercase tracking-[1px] text-[rgba(185,202,203,0.5)]">К оплате</p>
-            <p className="mt-1 text-[20px] text-[#E0E0E0]">{bill.title}</p>
-            {bill.payee ? <p className="mt-1 text-[13px] text-[rgba(185,202,203,0.55)]">{bill.payee}</p> : null}
-            <p className="mb-2 mt-4 text-[12px] uppercase tracking-[1px] text-[rgba(185,202,203,0.7)]">Сумма</p>
+          <div className="w-full rounded-t-[28px] bg-[var(--card)] px-5 pb-8 pt-5">
+            <p className="text-[13px] uppercase tracking-[1px] text-[var(--muted-50)]">К оплате</p>
+            <p className="mt-1 text-[20px] text-[var(--ink)]">{bill.title}</p>
+            {bill.payee ? <p className="mt-1 text-[13px] text-[var(--muted-55)]">{bill.payee}</p> : null}
+            <p className="mb-2 mt-4 text-[12px] uppercase tracking-[1px] text-[var(--muted-70)]">Сумма</p>
             <input
               inputMode="decimal"
               value={payAmount}
               readOnly={bill.amount != null}
               onChange={(e) => setPayAmount(e.target.value)}
               placeholder="0"
-              className="w-full rounded-[17px] border-2 border-[rgba(63,78,79,0.7)] bg-[rgba(255,255,255,0.05)] px-4 py-3.5 text-[22px] text-[#E0E0E0] outline-none"
+              className="w-full rounded-[17px] border-2 border-[var(--stroke)] bg-[var(--field)] px-4 py-3.5 text-[22px] text-[var(--ink)] outline-none"
             />
-            {payError && <p className="mt-2 text-[13px] text-[#FFB4AB]">{payError}</p>}
+            {payError && <p className="mt-2 text-[13px] text-[var(--danger)]">{payError}</p>}
             <button
               type="button"
               className="mt-4 h-[52px] w-full rounded-[17px] text-[18px] font-medium pressable"
-              style={{ background: "linear-gradient(128deg, #00D2D3 0%, #48FFD5 51%, #00D2D3 100%)", color: "#0B1A1A" }}
+              style={{ background: "linear-gradient(128deg, var(--fill) 0%, var(--fill-2) 51%, var(--fill) 100%)", color: "#0B1A1A" }}
               onClick={() => void pay()}
             >
               {payValue > 0 ? `Оплатить ${payValue.toLocaleString("ru-RU")} ₽` : "Оплатить"}
             </button>
-            <button type="button" className="mt-2 w-full py-2 text-[14px] text-[rgba(185,202,203,0.7)]" onClick={() => { setBill(null); seen.current = ""; if (incoming) onBack(); }}>
+            <button type="button" className="mt-2 w-full py-2 text-[14px] text-[var(--muted-70)]" onClick={() => { setBill(null); seen.current = ""; if (incoming) onBack(); }}>
               Отмена
             </button>
           </div>

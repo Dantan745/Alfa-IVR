@@ -12,15 +12,15 @@ export function ChannelPick({
   onChange: (c: OtpChannel) => void;
 }) {
   return (
-    <div className="mb-4 rounded-[16px] p-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(63,78,79,0.5)" }}>
-      <p className="text-[rgba(185,202,203,0.7)] text-[12px] uppercase tracking-[1px] mb-2">Куда отправить код</p>
+    <div className="mb-4 rounded-[16px] p-3" style={{ background: "var(--line)", border: "1px solid var(--stroke-soft)" }}>
+      <p className="text-[var(--muted-70)] text-[12px] uppercase tracking-[1px] mb-2">Куда отправить код</p>
       <label className="flex items-start gap-3 mb-2 cursor-pointer">
-        <input type="radio" className="mt-1 accent-[#00D2D3]" checked={channel === "sms"} onChange={() => onChange("sms")} />
-        <span className="text-[#E0E0E0] text-[14px]">На телефон в Telegram</span>
+        <input type="radio" className="mt-1 accent-[var(--accent)]" checked={channel === "sms"} onChange={() => onChange("sms")} />
+        <span className="text-[var(--ink)] text-[14px]">На телефон в Telegram</span>
       </label>
       <label className="flex items-start gap-3 cursor-pointer">
-        <input type="radio" className="mt-1 accent-[#00D2D3]" checked={channel === "email"} onChange={() => onChange("email")} />
-        <span className="text-[#E0E0E0] text-[14px]">Телефон не работает — отправить на почту</span>
+        <input type="radio" className="mt-1 accent-[var(--accent)]" checked={channel === "email"} onChange={() => onChange("email")} />
+        <span className="text-[var(--ink)] text-[14px]">Телефон не работает — отправить на почту</span>
       </label>
     </div>
   );
@@ -47,23 +47,23 @@ export default function OtpPanel({
 }) {
   return (
     <div className="mb-2">
-      {title && <p className="text-[#E0E0E0] text-[16px] font-medium mb-2">{title}</p>}
-      {hint && <p className="text-[rgba(185,202,203,0.7)] text-[13px] mb-3">{hint}</p>}
+      {title && <p className="text-[var(--ink)] text-[16px] font-medium mb-2">{title}</p>}
+      {hint && <p className="text-[var(--muted-70)] text-[13px] mb-3">{hint}</p>}
       <ChannelPick channel={channel} onChange={onChannel} />
-      <p className="text-[#E0E0E0] text-[13px] mb-2 uppercase tracking-[1px]">Код подтверждения</p>
+      <p className="text-[var(--ink)] text-[13px] mb-2 uppercase tracking-[1px]">Код подтверждения</p>
       <input
         inputMode="numeric"
         value={code}
         onChange={(e) => onCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
         placeholder="4–6 цифр из Telegram или письма"
-        className="w-full bg-[rgba(255,255,255,0.05)] border-2 border-[rgba(63,78,79,0.7)] rounded-[17px] px-4 py-3.5 text-[#E0E0E0] text-[18px] tracking-[6px] text-center outline-none mb-2"
+        className="w-full bg-[var(--field)] border-2 border-[var(--stroke)] rounded-[17px] px-4 py-3.5 text-[var(--ink)] text-[18px] tracking-[6px] text-center outline-none mb-2"
       />
       {botUrl && (
-        <a href={botUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-full h-11 rounded-[16px] mb-3 font-medium" style={{ background: "linear-gradient(128deg,#00D2D3,#48FFD5)", color: "#0B1A1A" }}>
+        <a href={botUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-full h-11 rounded-[16px] mb-3 font-medium" style={{ background: "linear-gradient(128deg,var(--fill),var(--fill-2))", color: "#0B1A1A" }}>
           Открыть Telegram
         </a>
       )}
-      {error && <p className="text-[#FFB4AB] text-[12px] mb-2">{error}</p>}
+      {error && <p className="text-[var(--danger)] text-[12px] mb-2">{error}</p>}
     </div>
   );
 }
@@ -101,9 +101,9 @@ export function PayOtpSheet({
   if (!open) return null;
   return (
     <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/55">
-      <div className="w-full max-w-[440px] rounded-t-[28px] px-5 pt-5 pb-8" style={{ background: "#191C1C" }}>
-        <p className="text-[#E0E0E0] text-[18px] font-medium">Подтверждение платежа</p>
-        <p className="text-[rgba(185,202,203,0.75)] text-[14px] mt-2 mb-4">
+      <div className="w-full max-w-[440px] rounded-t-[28px] px-5 pt-5 pb-8" style={{ background: "var(--card)" }}>
+        <p className="text-[var(--ink)] text-[18px] font-medium">Подтверждение платежа</p>
+        <p className="text-[var(--muted-75)] text-[14px] mt-2 mb-4">
           Сумма {amount.toLocaleString("ru-RU")} ₽ больше 10 000 ₽. Нужен одноразовый код.
         </p>
         <OtpPanel channel={channel} onChannel={onChannel} code={code} onCode={onCode} hint={hint} error={error} botUrl={botUrl} />
@@ -111,7 +111,7 @@ export function PayOtpSheet({
           type="button"
           disabled={busy}
           className="w-full h-12 rounded-[16px] font-medium pressable mb-2"
-          style={{ background: "linear-gradient(128deg, #00D2D3, #48FFD5)", color: "#0B1A1A", opacity: busy ? 0.6 : 1 }}
+          style={{ background: "linear-gradient(128deg, var(--fill), var(--fill-2))", color: "#0B1A1A", opacity: busy ? 0.6 : 1 }}
           onClick={() => {
             if (!sent || !code) {
               setSent(true);
@@ -124,11 +124,11 @@ export function PayOtpSheet({
           {busy ? "Отправка…" : sent && code.length >= 4 ? "Подтвердить" : "Выслать код"}
         </button>
         {sent && (
-          <button type="button" className="w-full text-[13px] text-[#00D2D3] mb-2" disabled={busy} onClick={() => onSend()}>
+          <button type="button" className="w-full text-[13px] text-[var(--accent)] mb-2" disabled={busy} onClick={() => onSend()}>
             Отправить код ещё раз
           </button>
         )}
-        <button type="button" className="w-full text-[13px] text-[rgba(185,202,203,0.5)]" onClick={onCancel}>
+        <button type="button" className="w-full text-[13px] text-[var(--muted-50)]" onClick={onCancel}>
           Отмена
         </button>
       </div>

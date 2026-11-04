@@ -72,10 +72,10 @@ export default function SmartContractPage({ onBack }: SmartContractProps) {
     return (
       <div className="flex-1 overflow-y-auto">
         <div className="flex items-center px-4 pt-4 pb-3 gap-3">
-          <button onClick={() => setCreating(false)} className="w-10 h-10 rounded-full bg-[#191C1C] flex items-center justify-center">
-            <span className="material-symbols-outlined text-[#00D2D3]">arrow_back</span>
+          <button onClick={() => setCreating(false)} className="w-10 h-10 rounded-full bg-[var(--card)] flex items-center justify-center">
+            <span className="material-symbols-outlined text-[var(--accent)]">arrow_back</span>
           </button>
-          <p className="text-[#E0E0E0] text-[20px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+          <p className="text-[var(--ink)] text-[20px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
             Новый смарт-контракт
           </p>
         </div>
@@ -84,9 +84,9 @@ export default function SmartContractPage({ onBack }: SmartContractProps) {
           {/* Visual builder */}
           <div
             className="p-4 rounded-[24px] mb-5"
-            style={{ background: "#191C1C", border: "1px solid rgba(0,210,211,0.15)" }}
+            style={{ background: "var(--card)", border: "1px solid rgba(0,210,211,0.15)" }}
           >
-            <p className="text-[rgba(185,202,203,0.6)] text-[11px] uppercase tracking-[1px] mb-3"
+            <p className="text-[var(--muted-60)] text-[11px] uppercase tracking-[1px] mb-3"
               style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>Визуальный конструктор</p>
 
             <div className="flex items-center gap-2 mb-4">
@@ -96,15 +96,15 @@ export default function SmartContractPage({ onBack }: SmartContractProps) {
                   onClick={() => setTrigger(t.key)}
                   className="flex-1 flex flex-col items-center gap-1.5 py-3 rounded-[14px] transition-all"
                   style={{
-                    background: trigger === t.key ? "rgba(0,210,211,0.12)" : "rgba(255,255,255,0.03)",
-                    border: trigger === t.key ? "1px solid rgba(0,210,211,0.4)" : "1px solid rgba(255,255,255,0.06)",
+                    background: trigger === t.key ? "rgba(0,210,211,0.12)" : "var(--chip)",
+                    border: trigger === t.key ? "1px solid rgba(0,210,211,0.4)" : "1px solid var(--wash)",
                   }}
                 >
                   <span className="material-symbols-outlined text-[20px]"
-                    style={{ color: trigger === t.key ? "#00D2D3" : "rgba(185,202,203,0.4)" }}>{t.icon}</span>
+                    style={{ color: trigger === t.key ? "var(--accent)" : "var(--muted-40)" }}>{t.icon}</span>
                   <span className="text-[10px]" style={{
                     fontFamily: "'Roboto:Medium', sans-serif",
-                    color: trigger === t.key ? "#00D2D3" : "rgba(185,202,203,0.4)",
+                    color: trigger === t.key ? "var(--accent)" : "var(--muted-40)",
                   }}>{t.label}</span>
                 </button>
               ))}
@@ -114,26 +114,26 @@ export default function SmartContractPage({ onBack }: SmartContractProps) {
             <div className="flex flex-col items-center gap-1">
               <div className="flex items-center gap-2 w-full px-2 py-2 rounded-[12px]"
                 style={{ background: "rgba(0,210,211,0.06)" }}>
-                <span className="material-symbols-outlined text-[#00D2D3] text-[16px]">
+                <span className="material-symbols-outlined text-[var(--accent)] text-[16px]">
                   {trigger === "date" ? "event" : trigger === "balance" ? "account_balance_wallet" : "bolt"}
                 </span>
-                <span className="text-[#00D2D3] text-[12px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+                <span className="text-[var(--accent)] text-[12px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
                   {trigger === "date" ? "Срабатывает по расписанию" : trigger === "balance" ? "При изменении баланса" : "По внешнему событию"}
                 </span>
               </div>
               <div className="w-px h-4 bg-[rgba(0,210,211,0.3)]" />
               <div className="flex items-center gap-2 w-full px-2 py-2 rounded-[12px]"
                 style={{ background: "rgba(0,210,211,0.06)" }}>
-                <span className="material-symbols-outlined text-[#00D2D3] text-[16px]">sync_alt</span>
-                <span className="text-[#00D2D3] text-[12px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+                <span className="material-symbols-outlined text-[var(--accent)] text-[16px]">sync_alt</span>
+                <span className="text-[var(--accent)] text-[12px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
                   Выполнить перевод {amount ? `${parseInt(amount).toLocaleString("ru-RU")} ₽` : "___"}
                 </span>
               </div>
               <div className="w-px h-4 bg-[rgba(0,210,211,0.3)]" />
               <div className="flex items-center gap-2 w-full px-2 py-2 rounded-[12px]"
                 style={{ background: "rgba(0,210,211,0.06)" }}>
-                <span className="material-symbols-outlined text-[#00D2D3] text-[16px]">person</span>
-                <span className="text-[#00D2D3] text-[12px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+                <span className="material-symbols-outlined text-[var(--accent)] text-[16px]">person</span>
+                <span className="text-[var(--accent)] text-[12px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
                   Получатель: {recipient || "___"}
                 </span>
               </div>
@@ -147,20 +147,20 @@ export default function SmartContractPage({ onBack }: SmartContractProps) {
             { label: "Получатель", value: recipient, set: setRecipient, ph: "Номер телефона или ID" },
           ].map(f => (
             <div key={f.label} className="mb-4">
-              <p className="text-[rgba(185,202,203,0.7)] text-[12px] uppercase tracking-[1px] mb-2"
+              <p className="text-[var(--muted-70)] text-[12px] uppercase tracking-[1px] mb-2"
                 style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>{f.label}</p>
               <input
                 value={f.value}
                 onChange={e => f.set(e.target.value)}
                 placeholder={f.ph}
-                className="w-full bg-[rgba(255,255,255,0.05)] border-2 border-[rgba(63,78,79,0.7)] rounded-[17px] px-4 py-3.5 text-[#E0E0E0] text-[15px] outline-none focus:border-[rgba(0,210,211,0.5)] placeholder-[#445456] transition-colors"
+                className="w-full bg-[var(--field)] border-2 border-[var(--stroke)] rounded-[17px] px-4 py-3.5 text-[var(--ink)] text-[15px] outline-none focus:border-[rgba(0,210,211,0.5)] placeholder-[var(--disabled-ink)] transition-colors"
                 style={{ fontFamily: "'Manrope:Regular', sans-serif" }}
               />
             </div>
           ))}
 
           <div className="mb-5">
-            <p className="text-[rgba(185,202,203,0.7)] text-[12px] uppercase tracking-[1px] mb-2"
+            <p className="text-[var(--muted-70)] text-[12px] uppercase tracking-[1px] mb-2"
               style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>Периодичность</p>
             <div className="grid grid-cols-2 gap-2">
               {freqs.map(f => (
@@ -170,9 +170,9 @@ export default function SmartContractPage({ onBack }: SmartContractProps) {
                   className="py-2.5 rounded-[14px] text-[13px] transition-all"
                   style={{
                     fontFamily: "'Roboto:Medium', sans-serif",
-                    background: freq === f.key ? "rgba(0,210,211,0.12)" : "rgba(255,255,255,0.03)",
-                    border: freq === f.key ? "1px solid rgba(0,210,211,0.4)" : "1px solid rgba(255,255,255,0.06)",
-                    color: freq === f.key ? "#00D2D3" : "rgba(185,202,203,0.5)",
+                    background: freq === f.key ? "rgba(0,210,211,0.12)" : "var(--chip)",
+                    border: freq === f.key ? "1px solid rgba(0,210,211,0.4)" : "1px solid var(--wash)",
+                    color: freq === f.key ? "var(--accent)" : "var(--muted-50)",
                   }}
                 >
                   {f.label}
@@ -186,7 +186,7 @@ export default function SmartContractPage({ onBack }: SmartContractProps) {
             className="w-full rounded-[17px] h-[52px] font-medium text-[18px] mb-4"
             style={{
               fontFamily: "'Roboto:Medium', sans-serif",
-              background: "linear-gradient(128deg, #00D2D3 0%, #48FFD5 51%, #00D2D3 100%)",
+              background: "linear-gradient(128deg, var(--fill) 0%, var(--fill-2) 51%, var(--fill) 100%)",
               color: "#0B1A1A",
               boxShadow: "0 0 30px rgba(72,255,213,0.3)",
             }}
@@ -203,10 +203,10 @@ export default function SmartContractPage({ onBack }: SmartContractProps) {
     <div className="flex-1 overflow-y-auto">
       <div className="flex items-center justify-between px-4 pt-4 pb-3">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="w-10 h-10 rounded-full bg-[#191C1C] flex items-center justify-center">
-            <span className="material-symbols-outlined text-[#00D2D3]">arrow_back</span>
+          <button onClick={onBack} className="w-10 h-10 rounded-full bg-[var(--card)] flex items-center justify-center">
+            <span className="material-symbols-outlined text-[var(--accent)]">arrow_back</span>
           </button>
-          <p className="text-[#E0E0E0] text-[20px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+          <p className="text-[var(--ink)] text-[20px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
             Смарт-контракты
           </p>
         </div>
@@ -215,8 +215,8 @@ export default function SmartContractPage({ onBack }: SmartContractProps) {
           className="flex items-center gap-1.5 px-3 py-2 rounded-[14px]"
           style={{ background: "rgba(0,210,211,0.12)", border: "1px solid rgba(0,210,211,0.3)" }}
         >
-          <span className="material-symbols-outlined text-[#00D2D3] text-[18px]">add</span>
-          <span className="text-[#00D2D3] text-[13px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>Создать</span>
+          <span className="material-symbols-outlined text-[var(--accent)] text-[18px]">add</span>
+          <span className="text-[var(--accent)] text-[13px]" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>Создать</span>
         </button>
       </div>
 
@@ -224,8 +224,8 @@ export default function SmartContractPage({ onBack }: SmartContractProps) {
         className="mx-4 mb-4 px-4 py-3 rounded-[18px] flex items-center gap-3"
         style={{ background: "rgba(0,210,211,0.07)", border: "1px solid rgba(0,210,211,0.2)" }}
       >
-        <span className="material-symbols-outlined text-[#00D2D3] text-[20px]">smart_toy</span>
-        <p className="text-[rgba(185,202,203,0.8)] text-[13px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+        <span className="material-symbols-outlined text-[var(--accent)] text-[20px]">smart_toy</span>
+        <p className="text-[var(--muted-80)] text-[13px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
           Автоматические платежи по условиям — без ручного управления
         </p>
       </div>
@@ -235,14 +235,14 @@ export default function SmartContractPage({ onBack }: SmartContractProps) {
           <div
             key={c.id}
             className="p-4 rounded-[24px] mb-3"
-            style={{ background: "#191C1C" }}
+            style={{ background: "var(--card)" }}
           >
             <div className="flex items-start justify-between mb-3">
               <div>
-                <p className="text-[#E0E0E0] text-[15px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+                <p className="text-[var(--ink)] text-[15px] font-medium" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
                   {c.name}
                 </p>
-                <p className="text-[rgba(185,202,203,0.5)] text-[12px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+                <p className="text-[var(--muted-50)] text-[12px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
                   {c.recipient}
                 </p>
               </div>
@@ -251,7 +251,7 @@ export default function SmartContractPage({ onBack }: SmartContractProps) {
                 onClick={() => toggleActive(c.id)}
                 className="relative w-11 h-6 rounded-full transition-all flex-shrink-0"
                 style={{
-                  background: c.active ? "rgba(0,210,211,0.3)" : "rgba(255,255,255,0.08)",
+                  background: c.active ? "rgba(0,210,211,0.3)" : "var(--line-strong)",
                   border: c.active ? "1px solid rgba(0,210,211,0.5)" : "1px solid rgba(255,255,255,0.1)",
                 }}
               >
@@ -259,28 +259,28 @@ export default function SmartContractPage({ onBack }: SmartContractProps) {
                   className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
                   style={{
                     left: c.active ? "calc(100% - 22px)" : "2px",
-                    background: c.active ? "#00D2D3" : "rgba(185,202,203,0.3)",
+                    background: c.active ? "var(--accent)" : "var(--muted-30)",
                   }}
                 />
               </button>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[rgba(185,202,203,0.4)] text-[14px]">schedule</span>
-                <span className="text-[rgba(185,202,203,0.5)] text-[12px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+                <span className="material-symbols-outlined text-[var(--muted-40)] text-[14px]">schedule</span>
+                <span className="text-[var(--muted-50)] text-[12px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
                   {c.trigger}
                 </span>
               </div>
               <span
                 className="text-[16px] font-bold"
-                style={{ fontFamily: "'Roboto:Bold', sans-serif", color: c.active ? "#00D2D3" : "rgba(185,202,203,0.4)" }}
+                style={{ fontFamily: "'Roboto:Bold', sans-serif", color: c.active ? "var(--accent)" : "var(--muted-40)" }}
               >
                 {c.amount.toLocaleString("ru-RU")} ₽
               </span>
             </div>
             <div className="flex items-center gap-1.5 mt-2">
-              <span className="material-symbols-outlined text-[rgba(185,202,203,0.3)] text-[12px]">event</span>
-              <span className="text-[rgba(185,202,203,0.4)] text-[11px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+              <span className="material-symbols-outlined text-[var(--muted-30)] text-[12px]">event</span>
+              <span className="text-[var(--muted-40)] text-[11px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
                 Следующий запуск: {c.nextRun}
               </span>
             </div>

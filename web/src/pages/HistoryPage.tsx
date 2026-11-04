@@ -41,7 +41,7 @@ export default function HistoryPage({ onOpenTx }: { onOpenTx: (id: string) => vo
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="px-4 sm:px-6 pt-4 pb-2 max-w-[920px] mx-auto w-full">
-        <p className="text-[#E0E0E0] text-[22px] font-medium mb-4" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+        <p className="text-[var(--ink)] text-[22px] font-medium mb-4" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
           История операций
         </p>
 
@@ -54,7 +54,7 @@ export default function HistoryPage({ onOpenTx }: { onOpenTx: (id: string) => vo
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Поиск"
-            className="w-full bg-[rgba(255,255,255,0.05)] border-2 border-[rgba(63,78,79,0.7)] rounded-[17px] pl-10 pr-4 py-3 text-white text-[16px] outline-none focus:border-[rgba(0,210,211,0.5)] placeholder-[#445456] transition-colors"
+            className="w-full bg-[var(--field)] border-2 border-[var(--stroke)] rounded-[17px] pl-10 pr-4 py-3 text-white text-[16px] outline-none focus:border-[rgba(0,210,211,0.5)] placeholder-[var(--disabled-ink)] transition-colors"
             style={{ fontFamily: "'Manrope:Regular', sans-serif" }}
           />
         </div>
@@ -68,9 +68,9 @@ export default function HistoryPage({ onOpenTx }: { onOpenTx: (id: string) => vo
               className="flex-shrink-0 px-4 py-1.5 rounded-full text-[12px] transition-all"
               style={{
                 fontFamily: "'Roboto:Medium', sans-serif",
-                background: dateFilter === d ? "rgba(0,210,211,0.15)" : "rgba(255,255,255,0.04)",
-                border: dateFilter === d ? "1px solid rgba(0,210,211,0.5)" : "1px solid rgba(255,255,255,0.08)",
-                color: dateFilter === d ? "#00D2D3" : "rgba(185,202,203,0.7)",
+                background: dateFilter === d ? "rgba(0,210,211,0.15)" : "var(--line)",
+                border: dateFilter === d ? "1px solid rgba(0,210,211,0.5)" : "1px solid var(--line-strong)",
+                color: dateFilter === d ? "var(--accent)" : "var(--muted-70)",
               }}
             >
               {d}
@@ -87,9 +87,9 @@ export default function HistoryPage({ onOpenTx }: { onOpenTx: (id: string) => vo
               className="flex-shrink-0 px-4 py-1.5 rounded-full text-[12px] transition-all"
               style={{
                 fontFamily: "'Roboto:Medium', sans-serif",
-                background: filter === f ? "#00D2D3" : "rgba(255,255,255,0.04)",
-                color: filter === f ? "#0B1A1A" : "rgba(185,202,203,0.7)",
-                border: filter === f ? "none" : "1px solid rgba(255,255,255,0.08)",
+                background: filter === f ? "var(--accent)" : "var(--line)",
+                color: filter === f ? "#0B1A1A" : "var(--muted-70)",
+                border: filter === f ? "none" : "1px solid var(--line-strong)",
               }}
             >
               {f}
@@ -103,7 +103,7 @@ export default function HistoryPage({ onOpenTx }: { onOpenTx: (id: string) => vo
             className="flex-1 px-3 py-2.5 rounded-[16px]"
             style={{ background: "rgba(34,141,87,0.1)", border: "1px solid rgba(34,141,87,0.2)" }}
           >
-            <p className="text-[rgba(185,202,203,0.6)] text-[10px] uppercase tracking-[1px] mb-1"
+            <p className="text-[var(--muted-60)] text-[10px] uppercase tracking-[1px] mb-1"
               style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>Поступления</p>
             <p className="text-[#228D57] text-[16px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
               +{totalIn.toLocaleString("ru-RU")} ₽
@@ -113,9 +113,9 @@ export default function HistoryPage({ onOpenTx }: { onOpenTx: (id: string) => vo
             className="flex-1 px-3 py-2.5 rounded-[16px]"
             style={{ background: "rgba(255,180,171,0.1)", border: "1px solid rgba(255,180,171,0.2)" }}
           >
-            <p className="text-[rgba(185,202,203,0.6)] text-[10px] uppercase tracking-[1px] mb-1"
+            <p className="text-[var(--muted-60)] text-[10px] uppercase tracking-[1px] mb-1"
               style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>Расходы</p>
-            <p className="text-[#FFB4AB] text-[16px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
+            <p className="text-[var(--danger)] text-[16px] font-bold" style={{ fontFamily: "'Roboto:Bold', sans-serif" }}>
               −{totalOut.toLocaleString("ru-RU")} ₽
             </p>
           </div>
@@ -124,11 +124,11 @@ export default function HistoryPage({ onOpenTx }: { onOpenTx: (id: string) => vo
 
       {/* Transactions list */}
       <div className="px-4">
-        <div className="rounded-[24px] overflow-hidden" style={{ background: "#191C1C" }}>
+        <div className="rounded-[24px] overflow-hidden" style={{ background: "var(--card)" }}>
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center py-12 gap-3">
-              <span className="material-symbols-outlined text-[rgba(185,202,203,0.3)] text-[48px]">search_off</span>
-              <p className="text-[rgba(185,202,203,0.5)] text-[14px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+              <span className="material-symbols-outlined text-[var(--muted-30)] text-[48px]">search_off</span>
+              <p className="text-[var(--muted-50)] text-[14px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
                 Операции не найдены
               </p>
             </div>
@@ -139,20 +139,20 @@ export default function HistoryPage({ onOpenTx }: { onOpenTx: (id: string) => vo
                 key={tx.id}
                 onClick={() => onOpenTx(tx.id)}
                 className={`w-full flex items-center gap-3 px-4 py-4 text-left pressable ${flashIds.includes(tx.id) ? "tx-flash" : ""}`}
-                style={{ borderBottom: i < filtered.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}
+                style={{ borderBottom: i < filtered.length - 1 ? "1px solid var(--line)" : "none" }}
               >
                 <div
                   className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ background: "#282A2A" }}
+                  style={{ background: "var(--raised)" }}
                 >
-                  <span className="material-symbols-outlined text-[#00D2D3] text-[20px]">{tx.icon}</span>
+                  <span className="material-symbols-outlined text-[var(--accent)] text-[20px]">{tx.icon}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[#E0E0E0] text-[14px] font-medium truncate" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
+                  <p className="text-[var(--ink)] text-[14px] font-medium truncate" style={{ fontFamily: "'Roboto:Medium', sans-serif" }}>
                     {tx.name}
                   </p>
                   <div className="flex items-center gap-2">
-                    <span className="text-[rgba(185,202,203,0.5)] text-[11px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
+                    <span className="text-[var(--muted-50)] text-[11px]" style={{ fontFamily: "'Roboto:Regular', sans-serif" }}>
                       {formatTxDate(tx.createdAt)}{tx.status === "pending" ? " · в обработке" : ""}
                     </span>
                     <span
@@ -171,7 +171,7 @@ export default function HistoryPage({ onOpenTx }: { onOpenTx: (id: string) => vo
                   className="text-[14px] font-medium"
                   style={{
                     fontFamily: "'Roboto:Medium', sans-serif",
-                    color: tx.type === "income" ? "#228D57" : "#FFB4AB",
+                    color: tx.type === "income" ? "#228D57" : "var(--danger)",
                   }}
                 >
                   {tx.type === "income" ? "+" : "−"}{Math.abs(tx.amount).toLocaleString("ru-RU")} ₽

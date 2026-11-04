@@ -7,8 +7,23 @@
     <meta name="theme-color" content="#0B0E14" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Кошелёк ЦР" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>Alfa Кошелёк ЦР</title>
+    <script>
+      try {
+        var c = localStorage.getItem("alfa-theme") || "dark";
+        var light = c === "light" || (c === "system" && matchMedia("(prefers-color-scheme: light)").matches);
+        document.documentElement.setAttribute("data-theme", light ? "light" : "dark");
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", light ? "#F3F6F7" : "#0B0E14");
+      } catch (e) {}
+    </script>
     <!-- figma:head-end -->
   </head>
   <body>
