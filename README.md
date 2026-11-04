@@ -60,7 +60,34 @@ npm run dev
 
 Админка: [https://alfa-koshelek-cr.fly.dev/admin](https://alfa-koshelek-cr.fly.dev/admin) → вкладка **ML / прогноз**.
 
-## Android (не эталон картинки)
+## Устанавливаемое приложение
+
+Один и тот же кошелёк ставится на компьютер и телефон. Данные и вход идут на https://alfa-koshelek-cr.fly.dev. Папка `shell`.
+
+На этом компьютере уже можно поставить Windows-версию: `shell\release\AlfaKoshelekCR-Setup.exe`. Android-файл, если сборка прошла: `shell\android\app\build\outputs\apk\debug\app-debug.apk`.
+
+Собрать заново:
+
+```bat
+cd /d D:\AlfaKoshelekCR\shell
+npm install
+npm run build:win
+set JAVA_HOME=C:\Program Files\Android\Android Studio\jbr
+set ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk
+npm run build:android
+```
+
+Mac (файл `.dmg`) и iPhone (через Xcode) собираются только на Mac, потому что Apple не отдаёт эти установщики с Windows:
+
+```bat
+cd /d D:\AlfaKoshelekCR\shell
+npm install
+npm run build:mac
+npm run cap:sync
+npm run open:ios
+```
+
+## Android (учебный набросок, не эталон картинки)
 
 Открыть в Android Studio папку `D:\AlfaKoshelekCR\android`.  
 Файл `local.properties` Studio создаст сама (`sdk.dir=...`).
