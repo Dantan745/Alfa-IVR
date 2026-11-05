@@ -97,4 +97,11 @@ export const api = {
     req<Snapshot>("/api/limits", { method: "PATCH", body: JSON.stringify(patch) }),
   addSupportNote: (text: string) =>
     req<Snapshot>("/api/support", { method: "POST", body: JSON.stringify({ text }) }),
+  recommendation: () =>
+    req<{ recommendation?: string | null; recommendation_error?: string | null; error?: string }>("/api/recommendation"),
+  recommendationChat: (recommendation: string, messages: { role: "user" | "model"; text: string }[]) =>
+    req<{ reply?: string | null; recommendation_error?: string | null; error?: string }>("/api/recommendation/chat", {
+      method: "POST",
+      body: JSON.stringify({ recommendation, messages }),
+    }),
 };

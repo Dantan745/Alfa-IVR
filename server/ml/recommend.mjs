@@ -1,6 +1,3 @@
-/**
- * Рекомендация одного клиента. Антифрод и score.py не вызывает.
- */
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +8,7 @@ function pythonBin() {
   return process.env.PYTHON || "python";
 }
 
-export function recommendClient(transactions, { text = true } = {}) {
+export function recommendClient(transactions, { text = true, messages = null, recommendation = "" } = {}) {
   const rows = (transactions || []).map((tx) => ({
     amount: tx.amount,
     category: tx.category || "",
@@ -62,7 +59,13 @@ export function recommendClient(transactions, { text = true } = {}) {
         finish({ error: "Рекомендация сейчас недоступна" });
       }
     });
-    child.stdin.write(JSON.stringify({ transactions: rows, text }));
+    const payload = { transactions: rows, text };
+    if (messages) {
+      payload.messages = messages;
+      payload.recommendation = recommendation || "";
+      payload.text = false;
+    }
+    child.stdin.write(JSON.stringify(payload));
     child.stdin.end();
   });
 }

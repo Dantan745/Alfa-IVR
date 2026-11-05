@@ -1,4 +1,3 @@
-'''Обёртка над моделью коллеги. Сам anti_fraud_infer.py не меняем.'''
 import json
 import sys
 from pathlib import Path
