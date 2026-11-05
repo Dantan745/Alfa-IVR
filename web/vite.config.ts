@@ -127,12 +127,12 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
       order: 'pre',
       handler(html) {
         let result = html
-        result = replaceHtmlCommentSlot(result, 'figma:lang', language)
-        result = replaceHtmlCommentSlot(result, 'figma:title', escapeHtmlText(title))
-        result = replaceHtmlCommentSlot(result, 'figma:head-start', headStart)
-        result = replaceHtmlCommentSlot(result, 'figma:head-end', headEnd)
-        result = replaceHtmlCommentSlot(result, 'figma:body-start', bodyStart)
-        result = replaceHtmlCommentSlot(result, 'figma:body-end', bodyEnd)
+        result = replaceHtmlCommentSlot(result, 'slot:lang', language)
+        result = replaceHtmlCommentSlot(result, 'slot:title', escapeHtmlText(title))
+        result = replaceHtmlCommentSlot(result, 'slot:head-start', headStart)
+        result = replaceHtmlCommentSlot(result, 'slot:head-end', headEnd)
+        result = replaceHtmlCommentSlot(result, 'slot:body-start', bodyStart)
+        result = replaceHtmlCommentSlot(result, 'slot:body-end', bodyEnd)
 
         const tags: HtmlTagDescriptor[] = []
         if (description) {

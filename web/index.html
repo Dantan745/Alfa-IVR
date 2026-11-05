@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ru">
   <head>
-    <!-- figma:head-start -->
+    <!-- slot:head-start -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0B0E14" />
@@ -24,12 +24,12 @@
         if (meta) meta.setAttribute("content", light ? "#F3F6F7" : "#0B0E14");
       } catch (e) {}
     </script>
-    <!-- figma:head-end -->
+    <!-- slot:head-end -->
   </head>
   <body>
-    <!-- figma:body-start -->
+    <!-- slot:body-start -->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <!-- figma:body-end -->
+    <!-- slot:body-end -->
   </body>
 </html>
