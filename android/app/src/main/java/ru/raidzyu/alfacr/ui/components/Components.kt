@@ -63,7 +63,7 @@ fun DeviceShell(content: @Composable () -> Unit) {
                 .statusBarsPadding()
                 .imePadding(),
         ) {
-            // Как в Figma App.tsx: верхнее и нижнее cyan-свечение.
+            // Верхнее и нижнее свечение, как на макете.
             Box(
                 Modifier
                     .fillMaxWidth()

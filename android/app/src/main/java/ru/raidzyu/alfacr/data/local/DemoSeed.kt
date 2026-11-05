@@ -10,7 +10,7 @@ private data class TxSeed(
     val icon: String,
 )
 
-/** DEMO: тестовый Иван + операции как в Figma. */
+/** Демо-счёт Ивана и набор операций. */
 object DemoSeed {
     const val DEMO_EMAIL = "ivan@alfa.demo"
     const val DEMO_PASSWORD = "Demo1234"
