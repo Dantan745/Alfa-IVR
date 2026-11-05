@@ -15,13 +15,34 @@ export default function DiscussPage({ onBack }: { onBack: () => void }) {
   const bottom = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setAdvice(sessionStorage.getItem(ADVICE_KEY) || "");
     try {
       const saved = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "[]");
       if (Array.isArray(saved)) setTurns(saved);
     } catch {
       setTurns([]);
     }
+    const stored = sessionStorage.getItem(ADVICE_KEY) || "";
+    if (stored) {
+      setAdvice(stored);
+      return;
+    }
+    let stop = false;
+    setWait(true);
+    api.recommendation().then((res) => {
+      if (stop) return;
+      if (res.recommendation) {
+        setAdvice(res.recommendation);
+        sessionStorage.setItem(ADVICE_KEY, res.recommendation);
+      } else {
+        setError(res.recommendation_error || res.error || "Рекомендация сейчас недоступна");
+      }
+      setWait(false);
+    }).catch((err: Error) => {
+      if (stop) return;
+      setError(err.message || "Рекомендация сейчас недоступна");
+      setWait(false);
+    });
+    return () => { stop = true; };
   }, []);
 
   useEffect(() => {
