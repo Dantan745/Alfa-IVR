@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { useWallet } from "../wallet";
 import { validatePin } from "../validate";
+import { deviceBioOn, enrollBiometry, markBioPassed, setDeviceBio } from "../bio";
 
 export default function SecurityPage({ onBack }: { onBack: () => void }) {
   const { wallet, user, updateSecurity } = useWallet();
   const [pin, setPin] = useState("");
   const [err, setErr] = useState("");
+  const [bioOn, setBioOn] = useState(deviceBioOn);
+  const [bioErr, setBioErr] = useState("");
 
   return (
     <div className="page-enter flex-1 overflow-y-auto">
@@ -18,10 +21,29 @@ export default function SecurityPage({ onBack }: { onBack: () => void }) {
       <div className="px-4 pb-8">
         <Toggle
           title="Вход по биометрии"
-          hint="На телефоне будет Face ID / отпечаток. В браузере — имитация."
-          on={!!wallet?.biometric}
-          onChange={(v) => void updateSecurity({ biometric: v })}
+          hint="Отпечаток или скан лица этого устройства. Перед включением телефон попросит подтвердить личность."
+          on={bioOn}
+          onChange={(v) => {
+            setBioErr("");
+            if (!v) {
+              setDeviceBio(false);
+              setBioOn(false);
+              void updateSecurity({ biometric: false });
+              return;
+            }
+            void enrollBiometry().then((r) => {
+              if (!r.ok) {
+                setBioErr(r.reason || "Не удалось подтвердить личность");
+                return;
+              }
+              setDeviceBio(true);
+              setBioOn(true);
+              markBioPassed();
+              void updateSecurity({ biometric: true });
+            });
+          }}
         />
+        {bioErr && <p className="text-[var(--danger)] text-[12px] -mt-2 mb-3 px-1">{bioErr}</p>}
         <Toggle
           title="Скрывать баланс на главной"
           hint="Сумма заменяется на ••••, пока не коснётесь карты"
@@ -59,7 +81,7 @@ export default function SecurityPage({ onBack }: { onBack: () => void }) {
         <div className="rounded-[20px] px-4 py-4 mb-3" style={{ background: "var(--card)" }}>
           <p className="text-[var(--ink)] text-[15px] font-medium">Двухфакторная защита</p>
           <p className="text-[var(--muted-50)] text-[12px] mt-1">
-            Код обязателен при входе, регистрации и платежах свыше 10 000 ₽. На телефон он приходит в Telegram. Если Telegram нет, на экране кода выберите почту.
+            Код обязателен при входе, регистрации и платежах свыше 10 000 ₽. На телефон он приходит в Telegram. Если Telegram нет, на экране кода выберите почту. Массовый платёж всегда подтверждается кодом с почты, кроме демо-счёта.
           </p>
         </div>
         <div className="rounded-[20px] px-4 py-4" style={{ background: "var(--card)" }}>
