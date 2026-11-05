@@ -1,19 +1,6 @@
 package ru.raidzyu.alfacr.ml
 
-/**
- * ML-контракт для Даниила Иваненко.
- *
- * Сейчас в приложение встроена лёгкая эвристика (HeuristicAnomalyDetector),
- * чтобы демо работало без Python/TFLite и не ело RAM на слабом телефоне.
- *
- * Как подключить настоящую модель:
- * 1. Положи .tflite в app/src/main/assets/anomaly.tflite (или ходи в HTTP API бэкенда).
- * 2. Реализуй этот интерфейс (пример — TfliteAnomalyDetector в docs/ml-contract.md).
- * 3. В WalletRepository замени detector на свою реализацию. UI менять не нужно:
- *    он читает только AnomalyResult.
- *
- * BACKEND: тот же JSON можно отдавать с сервера Фариса.
- */
+/** Фичи операции для скоринга. Подключение модели описано в docs/ml-contract.md. */
 data class TxFeatures(
     val amountKopecks: Long,
     val hourOfDay: Int,

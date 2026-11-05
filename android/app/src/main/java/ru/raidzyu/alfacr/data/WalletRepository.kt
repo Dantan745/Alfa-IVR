@@ -30,7 +30,7 @@ import java.util.UUID
 class WalletRepository(
     private val db: AppDatabase,
     private val store: ru.raidzyu.alfacr.data.security.SecureStore? = null,
-    // ML: подмени на TFLite/API, UI не трогай.
+    // Детектор подменяется реализацией AnomalyDetector.
     private val detector: AnomalyDetector = HeuristicAnomalyDetector(),
     private val forecaster: PaymentForecaster = LinearForecaster(),
     private val remote: RemoteBankApi = OfflineRemoteApi(),

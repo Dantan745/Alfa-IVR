@@ -1,4 +1,5 @@
 node_modules
+.cursor
 web/dist
 web/node_modules
 server/node_modules

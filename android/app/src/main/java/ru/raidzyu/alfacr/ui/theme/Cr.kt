@@ -3,7 +3,7 @@ package ru.raidzyu.alfacr.ui.theme
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
-/** Токены 1-в-1 с Figma Make (Дизайнивр). */
+/** Цвета макета: акцент #00D2D3, фон #121212. */
 object Cr {
     val Chrome = Color(0xFF0B0E14)
     val Bg = Color(0xFF121212)

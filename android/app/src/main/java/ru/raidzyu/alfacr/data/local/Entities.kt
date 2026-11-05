@@ -4,10 +4,7 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-/**
- * Пользователь кошелька ЦР.
- * Паспорт хранится только как хэш — в логи и бэкапы сырой номер не попадает.
- */
+/** Паспорт хранится только как хэш. */
 @Entity(tableName = "users")
 data class UserEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
