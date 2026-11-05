@@ -75,8 +75,8 @@ export default function HomePage({ onNavigate }: HomePageProps) {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
   const monthTx = txs.filter((t) => t.createdAt >= monthStart && t.createdAt < monthEnd && t.status !== "rejected");
-  const spent = monthTx.filter((t) => t.type === "expense").reduce((s, t) => s + Math.abs(t.amount), 0);
-  const income = monthTx.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
+  const spent = monthTx.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
+  const income = monthTx.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const day = now.getDate();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const daysLeft = Math.max(0, daysInMonth - day);
